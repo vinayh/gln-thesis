@@ -38,10 +38,11 @@ class GLNModel(BaseModel):
     # l_size = [2000, 1000, 500, 1]
     l_size = [200, 100, 50, 1]  # Num neurons in each layer
 
-    def __init__(self, n_context_fn=4, side_info_dim=784):
+    def __init__(self, n_context_fn=4, side_info_dim=784, ctx_type='half_space'):
         super().__init__()
         self.n_context_fn = n_context_fn  # Num subcontext functions
         self.n_layers = len(self.l_size)
+        self.ctx_type = ctx_type
         self.l_out = [None] * (self.n_layers + 1)
         self.gw = [None] * self.n_layers  # [n_layers, n_samples, n_neurons, w]
         self.gc = [None] * self.n_layers  # [n_layers, side_info_dim, curr_l_dim, n_subctx]
@@ -66,7 +67,7 @@ class GLNModel(BaseModel):
             s ([input sample] * batch_size): input features, used as side info
 
         Returns:
-            [type]: [description]
+            [type]: Result in output layer
         """
         print('Forward step of binary GLN')
         s = torch.flatten(s, start_dim=2).cuda()
@@ -130,31 +131,41 @@ class GLNModel(BaseModel):
         else:  # If no samples and no saved contexts
             raise TypeError
 
-    def calc_contexts(self, ctx_params, s):
+    def calc_contexts(self, ctx_fn, s):
         """Calculates context indices for each input (side info) sample
 
         Args:
-            ctx_params ([Float] * [side_info_dim,
-                                   curr_layer_dim,
-                                   n_subcontext]): Weights
+            ctx_fn ([nn.Linear] * [curr_layer_dim,
+                                   n_subcontext]): Context functions
             s ([Float] * [batch_size,
-                          side_info_dim]): input features, i.e. side info
+                          side_info_dim]): Input features, i.e. side info
 
         Returns:
             [ctx_index * [n_samples, n_neurons]]: context ID in
                                                       0...2**num_subcontexts
         """
+        # num_subcontexts = ctx_params.shape[2]
+        # # ctx_out = torch.zeros((n_samples, n_neurons), dtype=torch.int8)
+        # ctx_out = torch.zeros((n_samples, n_neurons),
+        #                       dtype=torch.int8,
+        #                       device='cuda')
+        # for c in range(num_subcontexts):
+        #     tmp = (s[:, 0, :].matmul(ctx_params[:, :, c]) > 0)
+        #     assert(tmp.shape == ctx_out.shape)
+        #     ctx_out += 2**c * tmp
         n_samples = s.shape[0]
-        n_neurons = ctx_params.shape[1]
-        num_subcontexts = ctx_params.shape[2]
-        # ctx_out = torch.zeros((n_samples, n_neurons), dtype=torch.int8)
+        n_neurons = len(ctx_fn)
         ctx_out = torch.zeros((n_samples, n_neurons),
                               dtype=torch.int8,
                               device='cuda')
-        for c in range(num_subcontexts):
-            tmp = (s[:, 0, :].matmul(ctx_params[:, :, c]) > 0)
-            assert(tmp.shape == ctx_out.shape)
-            ctx_out += 2**c * tmp
+        for n in range(n_neurons):
+            ctx = ctx_fn[n] # Context functions for given layer and neuron n
+            tmp_2 = torch.empty((n_samples, len(ctx)), device='cuda')
+            for i in range(n_samples):
+                for c in range(len(ctx)):
+                    tmp_1 = torch.sign(ctx[c](s[i, :]))
+                    tmp_2[:, c] = 2**c * (tmp_1 > 0)
+                ctx_out[i, n] = torch.sum(tmp_2, dim=1)
         return ctx_out
 
     def gated_layer(self, l_idx, s):
@@ -162,7 +173,7 @@ class GLNModel(BaseModel):
 
         Args:
             # prev_layer ([type]): [description]
-            # s ([type]): [description]
+            # s ([type]): input features, i.e. side info
 
         Returns:
             [type]: [description]
@@ -198,17 +209,25 @@ class GLNModel(BaseModel):
             # nn.Linear: Context function for specified layer sizes
             [Float] * [side_info_dim, curr_layer_dim, n_subcontext]: Weights
         """
-        ctx_params = torch.normal(mean=0.0,
-                                  std=0.1,
-                                  size=(side_info_dim,
-                                        curr_layer_dim,
-                                        n_subcontext),
-                                  device='cuda')
+        # ctx_params = torch.normal(mean=0.0,
+        #                           std=0.1,
+        #                           size=(side_info_dim,
+        #                                 curr_layer_dim,
+        #                                 n_subcontext),
+        #                           device='cuda')
         # torch.nn.init.normal_(ctx_params, mean=0.0, std=0.1)
-        # c = nn.Linear(side_info_dim, curr_layer_dim)
-        # # Is this the correct stdev from the paper?
-        # nn.init.normal_(c.weight, mean=0.0, std=0.1)
-        return ctx_params
+        if self.ctx_type == 'half_space':
+            all_ctx_functions = []
+            for _ in range(curr_layer_dim):
+                tmp_ctx_functions = []
+                for _ in range(n_subcontext):
+                    c = nn.Linear(side_info_dim, curr_layer_dim)
+                    nn.init.normal_(c.weight, mean=0.0, std=0.1) # TODO: check stdev in paper
+                    tmp_ctx_functions.append(c)
+                all_ctx_functions.append(tmp_ctx_functions)
+        else:
+            raise Exception
+        return all_ctx_functions
 
     def weights_init(self, prev_layer_dim, curr_layer_dim):
         """Generate initial uniform weights for each context in layer's neurons
@@ -228,13 +247,13 @@ class GLNModel(BaseModel):
 
 """
 Code in forward() if we use a tmp layer output placeholder to save last batch
-self.tmp_l_out = [None] * len(self.l_out)
-for i in range(self.n_layers):
-    self.tmp_l_out[i+1] = self.gated_layer(i, s)
-for i in range(self.n_layers):
-    self.l_out[i+1] = self.tmp_l_out[i+1]
-del self.tmp_l_out
-torch.cuda.empty_cache()
+    self.tmp_l_out = [None] * len(self.l_out)
+    for i in range(self.n_layers):
+        self.tmp_l_out[i+1] = self.gated_layer(i, s)
+    for i in range(self.n_layers):
+        self.l_out[i+1] = self.tmp_l_out[i+1]
+    del self.tmp_l_out
+    torch.cuda.empty_cache()
 """
 
 """Stuff from gated_layer()
