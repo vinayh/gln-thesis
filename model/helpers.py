@@ -15,7 +15,7 @@ def geo_mix(prev_layer, weights):
     """
     # if weights.isnan().any():
     #     raise Exception
-    # return torch.sigmoid(torch.dot(weights, logit(prev_layer)))
-    tmp_1 = torch.prod(torch.pow(prev_layer, weights))
-    tmp_2 = torch.prod(torch.pow(1 - prev_layer, weights))
-    return tmp_1 / (tmp_1 + tmp_2)
+    return torch.sigmoid(torch.dot(weights, logit(prev_layer)))
+    # tmp_1 = torch.prod(torch.pow(prev_layer, weights))
+    # tmp_2 = torch.prod(torch.pow(1 - prev_layer, weights))
+    # return tmp_1 / (tmp_1 + tmp_2)

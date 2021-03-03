@@ -72,22 +72,29 @@ class GLNModel(BaseModel):
         """
         print('Backward step of binary GLN')
         for i in range(self.n_layers):  # For each layer's output
+            eta = self.eta()
             prev_output = self.l_out[i]  # Prev layer's output
             n_samples, n_neurons = self.l_out[i+1].shape  # This layer's output
             contexts = self.retrieve_contexts(s, i)  # [n_samples, n_neurons]
             for n in range(n_samples):  # For each sample
-                eta = self.eta()
                 for j in range(n_neurons):
                     c = contexts[n, j]
                     tmp_1 = geo_mix(prev_output[n], self.gw[i][j, c, :])
+                    if tmp_1.isnan().any():
+                        print('NaN in tmp_1')
+                        raise Exception
                     tmp_2 = logit(prev_output[n])
+                    if tmp_2.isnan().any():
+                        print('NaN in tmp_2')
+                        raise Exception
                     # TODO: Weight param vectors are assigned to scalars?
                     self.gw[i][j, c, :] -= eta * (tmp_1 - targets[n]) * tmp_2
     
     def eta(self):
         self.t += 1  # TODO: Fix how t is incremented
-        eta = min(5500/self.t, 0.4)
-        return eta
+        n = min(5500/self.t, 0.4)
+        print('eta:', n)
+        return n
     
     def retrieve_contexts(self, s, i):
         """Gets contexts by calculating them from new samples, if provided,
@@ -104,37 +111,44 @@ class GLNModel(BaseModel):
             [Float] * batch_size: IDs of contexts for each sample/neuron combo
         """
         if s:  # If new samples are provided, calculate contexts
-            return self.calc_contexts(self.gc[i], s)
+            return self.ctx.calc(self.gc[i], s)
         elif self.c is not None:  # Saved contexts are used if found
             return self.c[i]  # Layer ctx: [n_samples, n_neurons]
         else:  # If no samples and no saved contexts
             raise TypeError
 
 
-    def gated_layer(self, l_idx, s):
+    def gated_layer(self, i, s):
         """Gated layer operation
 
         Args:
-            # prev_layer ([type]): [description]
-            # s ([type]): input features, i.e. side info
+            # i (int): Index of current layer
+            # s ([type]): Input features, i.e. side info
 
         Returns:
             [type]: [description]
         """
-        self.c[l_idx] = self.ctx.calc(self.gc[l_idx], s)
-        n_samples, n_neurons = self.c[l_idx].shape[:2]
-        prev_layer = self.l_out[l_idx]
-        if prev_layer.isnan().any():
-            raise Exception
+        c_i = self.ctx.calc(self.gc[i], s)  # [n_samples, n_neurons]
+        self.c[i] = c_i
+        n_samples, n_neurons = c_i.shape[:2]
+        prev_output = self.l_out[i]
 
         # Gated weights for each sample and each neuron
         output = torch.empty((n_samples, n_neurons), device='cuda')
         for n in range(n_samples):  # ############# This is the slow part!
-            w_i = self.gw[l_idx]  # [n_samples, n_neurons, w]
-            c = self.c[l_idx][n, :]  # [n_neurons]
-            W = torch.stack([w_i[k, c[k], :] for k in range(n_neurons)])
-            output[n, :] = torch.sigmoid(W.matmul(logit(prev_layer[n, :])))
+            w_i = self.gw[i]  # [n_neurons, n_contexts, layer_dim]
+            W = torch.stack([w_i[k, c_i[n][k], :] for k in range(n_neurons)])
+            output[n, :] = torch.sigmoid(W.matmul(logit(prev_output[n, :])))
+            # if w_i.isnan().any():
+            #     print('NaN in w_i')
+            #     raise Exception
+            # if c.isnan().any():
+            #     print('NaN in c')
+            #     raise Exception
+            # if prev_output[n, :].isnan().any():
+            #     print('NaN in prev_output')
             # print(torch.max(output), torch.min(output))
+        print('Max', torch.max(output), 'layer', i)
         if output.isnan().any():  # TODO: This NaN still occurs
             raise Exception
         return output
@@ -149,8 +163,9 @@ class GLNModel(BaseModel):
         Returns:
             [Float] * [curr_layer_dim, num_contexts, prev_layer_dim]: Weights
         """
-        weights = torch.ones((curr_layer_dim,
-                              2**self.n_context_fn,
+        weights = torch.full((curr_layer_dim,
+                              2**self.n_context_fn,  # 2^4 = 16
                               prev_layer_dim),
+                              1.0/prev_layer_dim,  # Init value
                               device='cuda')
-        return weights / prev_layer_dim  # Need to be init to 1/prev_layer_dim
+        return weights

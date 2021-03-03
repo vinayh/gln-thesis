@@ -3,11 +3,6 @@ import torch.nn as nn
 from base import BaseModel
 from model import GLNModel
 
-
-def logit(x):
-    return torch.log(x / (torch.ones_like(x) - x))
-
-
 def to_one_vs_all(targets):
     """
     Input: Torch tensor of target values (categorical labels)
@@ -49,6 +44,8 @@ class GLNOneVsAllModel(BaseModel):
         """
         output = torch.stack([m.forward(s) for m in self.models]).cuda()
         # predictions = torch.argmax(output, dim=0)
+        print(output.T.shape)
+        print
         return output.T  # transpose so new shape is [num_samples, num_classes]
 
     def backward(self, targets):

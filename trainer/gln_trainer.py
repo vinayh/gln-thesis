@@ -44,10 +44,8 @@ class GLNTrainer(BaseTrainer):
             print('\t---finished forward---')
             # print(target[:20], one_v_all_targets[1][:20])
             loss = self.criterion(output, target)
-            #####
-            # Gradient step here
+
             self.model.backward(target)
-            #####
 
             self.writer.set_step
             ((epoch - 1) * self.len_epoch + batch_idx)
