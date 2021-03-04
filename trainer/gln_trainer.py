@@ -40,6 +40,7 @@ class GLNTrainer(BaseTrainer):
         """
         for batch_idx, (data, target) in enumerate(self.data_loader):
             data, target = data.to(self.device), target.to(self.device)
+            data = torch.flatten(data, start_dim=2)
             output = self.model.forward(data)
             print('\t---finished forward---')
             # print(target[:20], one_v_all_targets[1][:20])

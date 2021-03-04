@@ -32,4 +32,6 @@ def logit_geo_mix(logit_prev_layer, weights):
     """
     # if weights.isnan().any():
     #     raise Exception
-    return torch.sigmoid(torch.dot(weights, logit_prev_layer))
+
+    # return torch.sigmoid(torch.dot(weights, logit_prev_layer))
+    return torch.sigmoid(torch.sum(weights * logit_prev_layer, dim=-1))

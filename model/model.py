@@ -12,7 +12,7 @@ class GLNModel(BaseModel):
     n_context_fn = 4
     t = 1
     K = [2000, 2000, 1000, 500, 1]
-    # K = [100, 10, 5, 2, 1]  # Num neurons in each layer including 0'th layer
+    # K = [200, 100, 50, 20, 1]  # Num neurons in each layer including 0'th layer
 
     def __init__(self, n_context_fn=4, side_info_dim=784, ctx_type='half_space'):
         super().__init__()
@@ -27,7 +27,7 @@ class GLNModel(BaseModel):
         for i in range(1, len(self.K)):
             self.gw[i] = self.weights_init(self.K[i-1], self.K[i])
             if ctx_type == 'half_space':
-                self.ctx[i] = HalfSpace()
+                self.ctx[i] = HalfSpace(n_subcontexts=n_context_fn)
                 self.ctx[i].init_fn(side_info_dim, self.K[i])
             else:
                 raise Exception
@@ -46,25 +46,24 @@ class GLNModel(BaseModel):
             [type]: Result in L_i layer
         """
         print('Forward step of binary GLN')
-        s = torch.flatten(s, start_dim=2).cuda()
-        # self.L[0] = torch.rand(s.shape[0], self.K[0], device='cuda')
         self.logit_L[0] = logit(torch.rand(s.shape[0], self.K[0], device='cuda'))
         for i in range(1, len(self.K)):
-            # self.logit_L[i], self.L[i] = self.gated_layer(i, s)
             self.logit_L[i] = self.gated_layer(i, s)
-        # self.L = self.gated_layers_optimized(s)  # Calc. all layers together
-
-        # if self.L[-1].isnan().any():
-        #     raise Exception
         if torch.sigmoid(self.logit_L[-1]).isnan().any():
             raise Exception
-        # output = self.L[-1][:, 0]  # Output of last layer
-        output = torch.sigmoid(self.logit_L[-1][:, 0])
-        print('output', output)
+        output = torch.sigmoid(self.logit_L[-1][:, 0])  # Undo logit for output
+        # print('output', output)
         return output
     
     def update(self, eta, logit_L_prev_z, w_ijc, targets_z):
         delta = eta * (logit_geo_mix(logit_L_prev_z, w_ijc) - targets_z) * logit_L_prev_z
+        new_w_ijc = torch.clamp(w_ijc - delta, min=-1.0, max=1.0)
+        # if torch.max(new_w_ijc) > 0.99:
+        #     raise Exception
+        return new_w_ijc
+
+    def update2(self, eta, logit_L_prev, w_ijc, targets):
+        delta = eta * (logit_geo_mix(logit_L_prev, w_ijc) - targets)[:, None] * logit_L_prev
         new_w_ijc = torch.clamp(w_ijc - delta, min=-1.0, max=1.0)
         # if torch.max(new_w_ijc) > 0.99:
         #     raise Exception
@@ -90,13 +89,15 @@ class GLNModel(BaseModel):
             logit_L_prev = self.logit_L[i-1]  # Prev layer output
             n_samples, n_neurons = self.logit_L[i].shape
             contexts = self.retrieve_contexts(s, i)  # [n_samples, n_neurons]
-            for z in range(n_samples):  # For each sample
-                for j in range(n_neurons):
-                    c_ijz = contexts[z, j]
-                    w_ijc = self.gw[i][j, c_ijz, :]
-                    self.gw[i][j, c_ijz, :] = self.update(eta, logit_L_prev[z], w_ijc, t[z])
+            for j in range(n_neurons):  # For each neuron
+                c_ij = contexts[:, j]  # Contexts for neuron j for all samples
+                # Weights for neuron j, all samples
+                w_ijc = torch.index_select(self.gw[i][j], 0, c_ij.type(torch.cuda.LongTensor))
+                # w_ic = torch.tensor([self.gw[i][j, c_ij[z]] for z in range(n_samples)], device='cuda')
+                new_w_ijc = self.update2(eta, logit_L_prev, w_ijc, t)
+                for z in range(n_samples):
+                    self.gw[i][j, c_ij[z], :] = new_w_ijc[z]
 
-    
     def eta(self):
         self.t += 1  # TODO: Fix how t is incremented
         n = min(5500/self.t, 0.4)
@@ -124,33 +125,6 @@ class GLNModel(BaseModel):
         else:  # If no samples and no saved contexts
             raise TypeError
 
-    # def gated_layers_optimized(self, s):
-    #     """Gated layer operation
-
-    #     Args:
-    #         # s ([type]): Input features, i.e. side info
-
-    #     Returns:
-    #         [type]: [description]
-    #     """
-    #     n_samples = len(s)  # Number of side info samples
-    #     # values = [logit(self.L[0][z]) for z in range(n_samples)]
-    #     self.L = [torch.empty((n_samples, K_i), device='cuda') for K_i in self.K]
-    #     self.L[0] = torch.rand(s.shape[0], self.K[0], device='cuda')
-    #     for z in range(n_samples):
-    #         temp = logit(self.L[0][z])
-    #         for i in range(1, len(self.K)):
-    #             self.c[i] = self.ctx[i].calc(s)  # [n_samples, n_neurons]
-    #             n_neurons = self.c[i].shape[1]
-    #             W = torch.stack([self.gw[i][j, self.c[i][z][j], :] for j in range(n_neurons)]).to('cuda')
-    #             temp = W.matmul(temp.T)
-    #             # self.L[i][z, :] = torch.sigmoid(temp)
-    #         self.L[-1][z, :] = torch.sigmoid(temp)
-    #     # print('Max', torch.max(self.L[-1]), 'Min', torch.min(self.L[-1]), 'layer', i)
-    #     # if self.L[-1].isnan().any():  # TODO: This NaN still occurs
-    #     #     raise Exception
-    #     return self.L
-
     def gated_layer(self, i, s):
         """Gated layer operation
 
@@ -164,22 +138,23 @@ class GLNModel(BaseModel):
         c_i = self.ctx[i].calc(s)  # [n_samples, n_neurons]
         self.c[i] = c_i
         n_samples, n_neurons = c_i.shape[:2]
-        # L_prev = self.L[i-1]
         logit_L_prev = self.logit_L[i-1]
         # Gated weights for each sample and each neuron
-        # L_i = torch.empty((n_samples, n_neurons), device='cuda')
-        logit_L_i = torch.empty((n_samples, n_neurons), device='cuda')
 
-        for z in range(n_samples):  # ############# This is the slow part!
-            w_i = self.gw[i]  # [n_neurons, n_contexts, layer_dim]
-            W = torch.stack([w_i[j, c_i[z][j], :] for j in range(n_neurons)])
-            # bias = math.e/(math.e + 1)
-            logit_L_i[z, :] = W.matmul(logit_L_prev[z, :])
-            # L_i[z, :] = torch.sigmoid(W.matmul(logit(L_prev[z, :])))
-        # print('Max', torch.max(L_i), 'Min', torch.min(L_i), 'layer', i)
-        # if torch.max(torch.sigmoid(logit_L_i)) > 0.99:  # TODO: This NaN still occurs
-        #     raise Exception
-        # return logit_L_i, L_i
+        # OLD way, replaced by more vectorized method below
+        # logit_L_i = torch.empty((n_samples, n_neurons), device='cuda')
+        # w_i = self.gw[i]  # [n_neurons, n_contexts, layer_dim]
+        # W_1 = None
+        # for z in range(n_samples):  # ############# This is the slow part!
+        #     W_1 = torch.stack([w_i[j, c_i[z][j], :] for j in range(n_neurons)])
+        #     # bias = math.e/(math.e + 1)
+        #     logit_L_i[z, :] = W_1.matmul(logit_L_prev[z, :])
+        
+        W = torch.empty((self.K[i], n_samples, self.K[i-1]), device='cuda')
+        for j in range(n_neurons):
+            W[j, :, :] = torch.index_select(self.gw[i][j], 0,
+                                            c_i[:, j].type(torch.cuda.LongTensor))
+        logit_L_i = torch.einsum('abc,bc->ba', W, logit_L_prev)
         return logit_L_i
 
     def weights_init(self, K_prev, K_i):
