@@ -4,6 +4,7 @@ import torch.nn as nn
 class HalfSpace:
     def __init__(self, n_subcontexts=4):
         self.n_subcontexts = n_subcontexts
+        self.ctx_fn = None
 
     def init_fn(self, side_info_dim, layer_size):
         """Creates linear layer representing a context function
@@ -16,20 +17,18 @@ class HalfSpace:
 
         Returns:
             # nn.Linear: Context function for specified layer sizes
-            [Float] * [side_info_dim, curr_layer_dim, n_subcontext]: Weights
+            # Dimensionality is [n_layers, side_info_dim, curr_l_dim, n_subctx]
         """
-        ctx_fn = []
+        self.ctx_fn = []
         for _ in range(self.n_subcontexts):
             c = nn.Linear(side_info_dim, layer_size).to('cuda')
             nn.init.normal_(c.weight, mean=0.0, std=0.1) # TODO: check stdev in paper
-            ctx_fn.append(c)
-        return ctx_fn
+            self.ctx_fn.append(c)
 
-    def calc(self, ctx_fn, s):
+    def calc(self, s):
         """Calculates context indices for each input (side info) sample
 
         Args:
-            ctx_fn ([nn.Linear] * [n_subcontext]): nn.Linear for each subcontext
             s ([Float] * [batch_size,
                           side_info_dim]): Input features, i.e. side info
 
@@ -38,13 +37,13 @@ class HalfSpace:
                                                       0...2**n_subcontexts
         """
         n_samples = s.shape[0]
-        n_neurons = ctx_fn[0].out_features  # Num of out_features (layer size)
+        n_neurons = self.ctx_fn[0].out_features  # Num of out_features (layer size)
         contexts = torch.zeros((n_samples, n_neurons), dtype=torch.int8,
                                device='cuda')
         for i in range(n_samples):  # For each input sample of side info
             for c in range(self.n_subcontexts):
                 # Get subctx c result for all neurons in layer
-                tmp = 2**c * ((ctx_fn[c](s[i, :])) > 0)
+                tmp = 2**c * ((self.ctx_fn[c](s[i, :])) > 0)
                 contexts[i, :] += tmp[0, :]
         return contexts
 
