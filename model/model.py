@@ -1,52 +1,36 @@
 import torch
-import torch.nn as nn
-# import torch.nn.functional as F
+import math
+# import torch.nn as nn
 from base import BaseModel
-
-
-def logit(x):
-    return torch.log(x / (torch.ones_like(x) - x))
-
-
-def geo_mixture(weights, prev_layer):
-    """Geometric weighted mixture of prev_layer using weights
-
-    Args:
-        weights ([Float] * num_neurons): Weights for neurons in prev layer
-        prev_layer ([Float] * num_neurons): Activations of prev layer
-
-    Returns:
-        [Float]: sigmoid(w * logit(prev_layer)), i.e. output of current neuron
-    """
-    return torch.sigmoid(torch.dot(weights, logit(prev_layer)))
-
+from .helpers import logit, geo_mix, logit_geo_mix
+from .context_halfspace import HalfSpace
 
 class GLNModel(BaseModel):
     """
     Binary GLN model, can be wrapped by GLNOneVsAllModel for multiclass tasks
     """
     n_context_fn = 4
-    c_idx = None
     t = 1
+    K = [2000, 2000, 1000, 500, 1]
+    # K = [200, 100, 50, 20, 1]  # Num neurons in each layer including 0'th layer
 
-    def __init__(self, n_context_fn=4, side_info_dim=784):
+    def __init__(self, n_context_fn=4, side_info_dim=784, ctx_type='half_space'):
         super().__init__()
-        self.n_context_fn = n_context_fn  # Num subcontext functions
-        self.init_size = 200  # Num components in init arbitrary activations
-        # self.l_size = [2000, 1000, 500, 1]
-        self.l_size = [200, 100, 50, 1]  # Num neurons in each layer
-        self.n_layers = len(self.l_size)
-        self.l_out = [None] * (self.n_layers + 1)
-        self.gw = [None] * self.n_layers
-        self.gc = [None] * self.n_layers
-        self.c_idx = [None] * self.n_layers
+        self.L = [None] * len(self.K)
+        self.logit_L = [None] * len(self.K)
+        self.ctx = [None] * len(self.K)  # [n_layers]
+        self.gw = [None] * len(self.K)  # [n_layers, n_contexts, n_neurons, w]
+        self.c = [None] * len(self.K)  # [n_layers, n_samples, n_neurons]
 
-        for i, size in enumerate(self.l_size):
-            self.gc[i] = self.ctx_init(n_context_fn, side_info_dim, size)
-            if i == 0:
-                self.gw[i] = self.weights_init(self.init_size, size)
+        # Init weights and context params
+        self.gw[0] = self.weights_init(self.K[0], self.K[1])
+        for i in range(1, len(self.K)):
+            self.gw[i] = self.weights_init(self.K[i-1], self.K[i])
+            if ctx_type == 'half_space':
+                self.ctx[i] = HalfSpace(n_subcontexts=n_context_fn)
+                self.ctx[i].init_fn(side_info_dim, self.K[i])
             else:
-                self.gw[i] = self.weights_init(self.l_size[i-1], size)
+                raise Exception
 
     def forward(self, s):
         """GLN forward pass steps:
@@ -59,152 +43,130 @@ class GLNModel(BaseModel):
             s ([input sample] * batch_size): input features, used as side info
 
         Returns:
-            [type]: [description]
+            [type]: Result in L_i layer
         """
         print('Forward step of binary GLN')
-        # Shape is [num_samples, num_neurons]
-        self.l_out[0] = torch.rand(s.shape[0], self.init_size)
-        s = torch.flatten(s, start_dim=2)
-        self.l_out[1] = self.gated_layer(0, s)
-        self.l_out[2] = self.gated_layer(1, s)
-        self.l_out[3] = self.gated_layer(2, s)
-        self.l_out[4] = self.gated_layer(3, s)
-        return self.l_out[4][:, 0]
+        self.logit_L[0] = logit(torch.rand(s.shape[0], self.K[0], device='cuda'))
+        for i in range(1, len(self.K)):
+            self.logit_L[i] = self.gated_layer(i, s)
+        if torch.sigmoid(self.logit_L[-1]).isnan().any():
+            raise Exception
+        output = torch.sigmoid(self.logit_L[-1][:, 0])  # Undo logit for output
+        # print('output', output)
+        return output
+    
+    def update(self, eta, logit_L_prev_z, w_ijc, targets_z):
+        delta = eta * (logit_geo_mix(logit_L_prev_z, w_ijc) - targets_z) * logit_L_prev_z
+        new_w_ijc = torch.clamp(w_ijc - delta, min=-1.0, max=1.0)
+        # if torch.max(new_w_ijc) > 0.99:
+        #     raise Exception
+        return new_w_ijc
 
-    def backward(self, targets, s=None):
+    def update2(self, eta, logit_L_prev, w_ijc, targets):
+        delta = eta * (logit_geo_mix(logit_L_prev, w_ijc) - targets)[:, None] * logit_L_prev
+        new_w_ijc = torch.clamp(w_ijc - delta, min=-1.0, max=1.0)
+        # if torch.max(new_w_ijc) > 0.99:
+        #     raise Exception
+        return new_w_ijc
+
+    def backward(self, t, s=None):
         """Backward GLN step, updates appropriate weights using provided
         ground-truth targets along with either:
         1. last-used/saved input samples and contexts, or
         2. optionally provided input samples (and newly calculated contexts)
-        TODO:
-        1. For each sample/target, find ctx indices
-        2. For each layer/neuron, update w for the correct ctx given target
 
         Args:
-            targets ([target_label] * batch_size): categorical labels for batch
+            t ([target_label] * batch_size): target labels for batch
             s ([input_sample] * batch_size): OPTIONAL, input features
 
         Returns:
             Updated weights?
         """
         print('Backward step of binary GLN')
-        eta = min(5500/self.t, 0.4)
-        self.t += 1
-        print(eta)
-        for i in range(self.n_layers):  # For each layer's output
-            output, prev_output = self.l_out[i+1], self.l_out[i]
-            if s:  # If new samples are provided, calculate contexts
-                c_idx = self.calc_contexts(self.gc[i], s)
-            elif self.c_idx is not None:  # Saved contexts are used if found
-                c_idx = self.c_idx[i]  # Layer ctx: [num_samples, num_neurons]
-            else:  # If no samples and no saved contexts
-                raise TypeError
-            n_samples, n_neurons = output.shape
-            assert(output.shape == c_idx.shape)  # [num_samples, num_neurons]
-            for n in range(n_samples):  # For each sample
-                # print('prev_output shape for sample n', prev_output.shape)
-                for j in range(n_neurons):
-                    c = c_idx[n, j]
-                    # print('prev output shape', prev_output.shape)
-                    tmp_1 = geo_mixture(self.gw[i][j, c, :], prev_output[n])
-                    tmp_2 = logit(prev_output[n])
-                    self.gw[i][j, c, :] -= eta * tmp_1 * tmp_2
-                    # raise NotImplementedError
+        # print('targets', t)
+        for i in range(1, len(self.K)):  # For each non-base layer
+            eta = self.eta()  # Update learning rate
+            logit_L_prev = self.logit_L[i-1]  # Prev layer output
+            n_samples, n_neurons = self.logit_L[i].shape
+            contexts = self.retrieve_contexts(s, i)  # [n_samples, n_neurons]
+            for j in range(n_neurons):  # For each neuron
+                c_ij = contexts[:, j]  # Contexts for neuron j for all samples
+                # Weights for neuron j, all samples
+                w_ijc = torch.index_select(self.gw[i][j], 0, c_ij.type(torch.cuda.LongTensor))
+                # w_ic = torch.tensor([self.gw[i][j, c_ij[z]] for z in range(n_samples)], device='cuda')
+                new_w_ijc = self.update2(eta, logit_L_prev, w_ijc, t)
+                for z in range(n_samples):
+                    self.gw[i][j, c_ij[z], :] = new_w_ijc[z]
 
-    def calc_contexts(self, ctx_params, s):
-        """Calculates context indices for each input (side info) sample
+    def eta(self):
+        self.t += 1  # TODO: Fix how t is incremented
+        n = min(5500/self.t, 0.4)
+        # print('eta:', n)
+        return n
+    
+    def retrieve_contexts(self, s, i):
+        """Gets contexts by calculating them from new samples, if provided,
+        or from previously saved contexts if samples are not provided.
 
         Args:
-            ctx_params ([Float] * [side_info_dim,
-                                   curr_layer_dim,
-                                   n_subcontext]): Weights
-            s ([input_sample] * batch_size): input features, i.e. side info
+            s ([input_sample] * batch_size): OPTIONAL, input features
+            i (Float): Index of current layer
+
+        Raises:
+            TypeError: If no contexts are saved and no samples are provided
 
         Returns:
-            [ctx_index * [num_samples, num_neurons]]: context ID in
-                                                      0...2**num_subcontexts
+            [Float] * batch_size: IDs of contexts for each sample/neuron combo
         """
-        num_samples = s.shape[0]
-        num_neurons = ctx_params.shape[1]
-        num_subcontexts = ctx_params.shape[2]
-        # ctx_out = torch.zeros((num_samples, num_neurons), dtype=torch.int8)
-        ctx_out = torch.zeros((num_samples, num_neurons), dtype=torch.int8, device='cuda:0')
-        for c in range(num_subcontexts):
-            for n in range(num_samples):
-                # assert(ctx_out[n, :].shape == torch.matmul(s[n, 0, :], ctx_params[:, :, c]).shape)
-                ctx_out[n, :] += (2**c * (torch.matmul(s[n, 0, :], ctx_params[:, :, c]) > 0))
-        return ctx_out
+        if s:  # If new samples are provided, calculate contexts
+            return self.ctx[i].calc(s)
+        elif self.c is not None:  # Saved contexts are used if found
+            return self.c[i]  # Layer ctx: [n_samples, n_neurons]
+        else:  # If no samples and no saved contexts
+            raise TypeError
 
-    def gated_layer(self, l_idx, s):
+    def gated_layer(self, i, s):
         """Gated layer operation
 
         Args:
-            # ctx_params ([Float] * [side_info_dim,
-            #                        curr_layer_dim,
-            #                        n_subcontext]): Context params
-            # weight_params ([Float] * [curr_layer_dim,
-            #                           num_contexts,
-            #                           prev_layer_dim]): Weights
-            # prev_layer ([type]): [description]
-            # s ([type]): [description]
+            # i (int): Index of current layer
+            # s ([type]): Input features, i.e. side info
 
         Returns:
             [type]: [description]
         """
-        ctx_params = self.gc[l_idx]  # [side_info_dim, curr_l_dim, n_subctx]
-        weight_params = self.gw[l_idx]  # [curr_l_dim, n_contexts, prev_l_dim]
-        prev_layer = self.l_out[l_idx]  # [prev_l_dim]
-
-        c_idx = self.calc_contexts(ctx_params, s)  # [num_samples, num_neurons]
-        self.c_idx[l_idx] = c_idx
+        c_i = self.ctx[i].calc(s)  # [n_samples, n_neurons]
+        self.c[i] = c_i
+        n_samples, n_neurons = c_i.shape[:2]
+        logit_L_prev = self.logit_L[i-1]
         # Gated weights for each sample and each neuron
-        # Shape is [num_samples, num_neurons, weight_components]
-        num_samples, num_neurons = c_idx.shape[:2]
-        output = torch.empty(num_samples, num_neurons)
-        # ############# This is the slow part!
-        for i in range(num_samples):
-            for j in range(num_neurons):
-                output[i, j] = geo_mixture(weight_params[j, c_idx[i, j], :],
-                                           prev_layer[i])
-        # output = torch.tensor([[geo_mixture(weight_params[j, c_idx[i, j], :],
-        #                                     prev_layer[i])
-        #                         for j in range(num_neurons)]
-        #                        for i in range(num_samples)])
-        return output
 
-    def ctx_init(self, n_subcontext, side_info_dim, curr_layer_dim):
-        """Creates linear layer representing a context function
-        for a provided previous and current layer size
+        # OLD way, replaced by more vectorized method below
+        # logit_L_i = torch.empty((n_samples, n_neurons), device='cuda')
+        # w_i = self.gw[i]  # [n_neurons, n_contexts, layer_dim]
+        # W_1 = None
+        # for z in range(n_samples):  # ############# This is the slow part!
+        #     W_1 = torch.stack([w_i[j, c_i[z][j], :] for j in range(n_neurons)])
+        #     # bias = math.e/(math.e + 1)
+        #     logit_L_i[z, :] = W_1.matmul(logit_L_prev[z, :])
+        
+        W = torch.empty((self.K[i], n_samples, self.K[i-1]), device='cuda')
+        for j in range(n_neurons):
+            W[j, :, :] = torch.index_select(self.gw[i][j], 0,
+                                            c_i[:, j].type(torch.cuda.LongTensor))
+        logit_L_i = torch.einsum('abc,bc->ba', W, logit_L_prev)
+        return logit_L_i
 
-        Args:
-            n_subcontext (Float): Number of subcontext functions
-            side_info_dim (Float): Size of side info
-            curr_layer_dim (Float): Size of current layer
-
-        Returns:
-            # nn.Linear: Context function for specified layer sizes
-            [Float] * [side_info_dim, curr_layer_dim, n_subcontext]: Weights
-        """
-        ctx_params = torch.normal(mean=0.0, std=0.1, size=(side_info_dim,
-                                                           curr_layer_dim,
-                                                           n_subcontext))
-        # torch.nn.init.normal_(ctx_params, mean=0.0, std=0.1)
-        # c = nn.Linear(side_info_dim, curr_layer_dim)
-        # # Is this the correct stdev from the paper?
-        # nn.init.normal_(c.weight, mean=0.0, std=0.1)
-        return ctx_params
-
-    def weights_init(self, prev_layer_dim, curr_layer_dim):
+    def weights_init(self, K_prev, K_i):
         """Generate initial uniform weights for each context in layer's neurons
 
         Args:
-            prev_layer_dim (Float): Size of previous layer
-            curr_layer_dim (Float): Size of current layer
+            K_prev (Float): Size of previous layer
+            K_i (Float): Size of current layer
 
         Returns:
-            [Float] * [curr_layer_dim, num_contexts, prev_layer_dim]: Weights
+            [Float] * [K_i, num_contexts, K_prev]: Weights
         """
-        weights = torch.ones((curr_layer_dim,
-                              2**self.n_context_fn,
-                              prev_layer_dim))
-        return weights / prev_layer_dim  # Need to be init to 1/prev_layer_dim
+        weights = torch.full((K_i, 2**self.n_context_fn, K_prev),
+                              1.0/K_prev, device='cuda')
+        return weights

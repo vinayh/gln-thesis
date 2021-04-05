@@ -20,6 +20,7 @@ np.random.seed(SEED)
 
 
 def main(config):
+    print('Num GPUs:', torch.cuda.device_count())
     logger = config.get_logger('train')
 
     # setup data_loader instances
@@ -36,9 +37,9 @@ def main(config):
 
     optimizer = None
     trainer = GLNTrainer(model, criterion, metrics, optimizer,
-                      config=config,
-                      data_loader=data_loader,
-                      valid_data_loader=valid_data_loader)
+                         config=config,
+                         data_loader=data_loader,
+                         valid_data_loader=valid_data_loader)
 
     trainer.train()
 

@@ -3,11 +3,6 @@ import torch.nn as nn
 from base import BaseModel
 from model import GLNModel
 
-
-def logit(x):
-    return torch.log(x / (torch.ones_like(x) - x))
-
-
 def to_one_vs_all(targets):
     """
     Input: Torch tensor of target values (categorical labels)
@@ -15,10 +10,12 @@ def to_one_vs_all(targets):
                 for each class (used for one-vs-all models)
     """
     classes = torch.unique(targets, sorted=True)
-    sets = [torch.zeros_like(targets) for i in classes]
+    ova_targets = torch.zeros((len(classes), len(targets)),
+                              dtype=torch.int,
+                              device='cuda')
     for i, c in enumerate(classes):
-        sets[i][targets == c] = 1
-    return sets
+        ova_targets[i, :][targets == c] = 1
+    return ova_targets
 
 
 class GLNOneVsAllModel(BaseModel):
@@ -32,6 +29,8 @@ class GLNOneVsAllModel(BaseModel):
         # Create a binary model for each class (i.e. each one-vs-all model)
         self.models = [GLNModel(n_context_fn, prev_layer_dim)
                        for i in range(n_classes)]
+        for m in self.models:
+            m.to(torch.device('cuda'))
 
     def forward(self, s):
         """Forward pass of GLN one-vs-all model
@@ -43,9 +42,10 @@ class GLNOneVsAllModel(BaseModel):
         Returns:
             [type]: [description]
         """
-        output = torch.stack([m.forward(s) for m in self.models])
+        output = torch.stack([m.forward(s) for m in self.models]).cuda()
         # predictions = torch.argmax(output, dim=0)
-        # return predictions
+        print(output.T.shape)
+        print
         return output.T  # transpose so new shape is [num_samples, num_classes]
 
     def backward(self, targets):
