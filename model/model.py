@@ -11,8 +11,8 @@ class GLNModel(BaseModel):
     """
     n_context_fn = 4
     t = 1
-    K = [2000, 2000, 1000, 500, 1]
-    # K = [200, 100, 50, 20, 1]  # Num neurons in each layer including 0'th layer
+    # K = [2000, 2000, 1000, 500, 1]
+    K = [4, 4, 4, 1]  # Num neurons in each layer including 0'th layer
 
     def __init__(self, n_context_fn=4, side_info_dim=784, ctx_type='half_space'):
         super().__init__()
