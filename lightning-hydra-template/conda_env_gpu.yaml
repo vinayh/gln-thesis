@@ -1,0 +1,15 @@
+name: myenv
+
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.8
+  - pip
+  - notebook
+  - ipython
+  - cudatoolkit
+  - pytorch=1.8.1
+  - torchvision=0.9.1
