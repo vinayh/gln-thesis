@@ -5,6 +5,7 @@
 		}
 	],
 	"settings": {
-		"python.pythonPath": "/home/vinay/.conda/envs/hypercl/bin/python"
+		"python.pythonPath": "/home/vinay/.conda/envs/hypercl/bin/python",
+		"jupyter.jupyterServerType": "local"
 	}
 }

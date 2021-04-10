@@ -11,8 +11,8 @@ class GLNModel(BaseModel):
     """
     n_context_fn = 4
     t = 1
-    # K = [2000, 2000, 1000, 500, 1]
-    K = [4, 4, 4, 1]  # Num neurons in each layer including 0'th layer
+    K = [200, 200, 100, 50, 1]
+    # K = [4, 4, 4, 1]  # Num neurons in each layer including 0'th layer
 
     def __init__(self, n_context_fn=4, side_info_dim=784, ctx_type='half_space'):
         super().__init__()
@@ -28,7 +28,7 @@ class GLNModel(BaseModel):
             self.gw[i] = self.weights_init(self.K[i-1], self.K[i])
             if ctx_type == 'half_space':
                 self.ctx[i] = HalfSpace(n_subcontexts=n_context_fn)
-                self.ctx[i].init_fn(side_info_dim, self.K[i])
+                self.ctx[i].gen_layer(side_info_dim, self.K[i])
             else:
                 raise Exception
 

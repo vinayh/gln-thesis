@@ -6,7 +6,7 @@ class HalfSpace:
         self.n_subcontexts = n_subcontexts
         self.ctx_fn = None
 
-    def init_fn(self, side_info_dim, layer_size):
+    def gen_layer(self, side_info_dim, layer_size):
         """Creates linear layer representing a context function
         for a provided previous and current layer size
 
@@ -46,23 +46,3 @@ class HalfSpace:
                 tmp = 2**c * ((self.ctx_fn[c](s[i, :])) > 0)
                 contexts[i, :] += tmp[0, :]
         return contexts
-
-# OLD init_contexts
-    # ctx_params = torch.normal(mean=0.0,
-    #                           std=0.1,
-    #                           size=(side_info_dim,
-    #                                 curr_layer_dim,
-    #                                 n_subcontext),
-    #                           device='cuda')
-    # torch.nn.init.normal_(ctx_params, mean=0.0, std=0.1)
-
-# OLD calc_contexts
-    # n_subcontexts = ctx_params.shape[2]
-    # # ctx_out = torch.zeros((n_samples, n_neurons), dtype=torch.int8)
-    # ctx_out = torch.zeros((n_samples, n_neurons),
-    #                       dtype=torch.int8,
-    #                       device='cuda')
-    # for c in range(n_subcontexts):
-    #     tmp = (s[:, 0, :].matmul(ctx_params[:, :, c]) > 0)
-    #     assert(tmp.shape == ctx_out.shape)
-    #     ctx_out += 2**c * tmp
