@@ -80,7 +80,7 @@ class MNISTGLNModel(LightningModule):
 
     def step(self, batch: Any):
         x, y = batch
-        logits = self.forward(x, y)
+        logits = self.forward(x, y).detach()
         loss = self.criterion(logits, y)
         preds = torch.argmax(logits, dim=1)
         return loss, preds, y

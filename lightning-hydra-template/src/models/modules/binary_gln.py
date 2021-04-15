@@ -85,6 +85,7 @@ class BinaryGLN(LightningModule):
         # Weights for base predictor (arbitrary activations)
         # self.W_base = torch.rand((self.l_sizes[0], self.l_sizes[0]), 1.0/self.l_sizes[0])
         self.W_base = nn.Linear(self.l_sizes[0], self.l_sizes[0])
+        self.W_base.requires_grad_ = False
         # Context functions and weights for gated layers
         s_dim = hparams["input_size"]
         for i in range(len(self.l_sizes)-1):  # Add ctx and w for each layer until the single output neuron layer
@@ -122,22 +123,27 @@ class BinaryGLN(LightningModule):
         assert(c.shape[0] == batch_size)
         assert(len(c[0]) == input_layer_dim)
         ###
-        W_ctx = torch.empty(batch_size, next_layer_dim, input_layer_dim).to(self.device)
-        for j in range(batch_size):
-            # For each sample:
-            # Select weights c[j] for each input neuron with contexts c[j, :]
-            W_ctx[j] = w[:, c[j], range(input_layer_dim)]  # [next_layer_dim, input_layer_dim]
+        # W_ctx = torch.empty(batch_size, next_layer_dim, input_layer_dim).to(self.device)
+        # for j in range(batch_size):
+        #     # For each sample:
+        #     # Select weights c[j] for each input neuron with contexts c[j, :]
+        #     W_ctx[j] = w[:, c[j], range(input_layer_dim)]  # [next_layer_dim, input_layer_dim]
         ### Below: potentially faster alternative to above loop
-        # W_ctx = torch.tensor([w[:, c[j], range(input_layer_dim)] for j in range(batch_size)])
-        output = torch.einsum('abc,ac->ab', W_ctx, x)  # TODO optimize using something other than einsum
-        clipped = torch.clamp(output, min=-weight_clip, max=weight_clip)
-        return clipped
+        W_ctx = torch.stack([w[:, c[j], range(input_layer_dim)] for j in range(batch_size)])
+        ### Three alternatives below
+        # preds = torch.einsum('abc,ac->ab', W_ctx, x)  # TODO optimize using something other than einsum
+        preds = torch.stack([W_ctx[i, :, :].matmul(x[i]) for i in range(batch_size)])  # Seems fastest on laptop CPU
+        # preds = torch.bmm(W_ctx, x.unsqueeze(2)).squeeze()
+        ###
+        w_clipped = torch.clamp(w, min=-weight_clip, max=weight_clip)
+        return preds, w_clipped
 
     def base_layer(self, batch_size, layer_size):
         clip_param = self.hparams["pred_clipping"]
         # rand_activations = torch.empty(batch_size, self.l_sizes[0]).normal_(mean=0.5, std=0.1)
         # rand_activations = torch.empty(batch_size, self.l_sizes[0]).normal_(mean=0.5, std=1.0).cuda()
         rand_activations = torch.empty(batch_size, self.l_sizes[0]).normal_(mean=0.5, std=1.0)
+        rand_activations.requires_grad = False
         x = self.W_base(rand_activations)
         # x = torch.clamp(x, min=clip_param, max=1.0-clip_param)
         # x = logit(x)
