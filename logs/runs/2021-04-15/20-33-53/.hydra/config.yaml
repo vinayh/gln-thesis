@@ -1,0 +1,51 @@
+trainer:
+  _target_: pytorch_lightning.Trainer
+  gpus: 1
+  min_epochs: 1
+  max_epochs: 10
+  weights_summary: null
+  progress_bar_refresh_rate: 10
+  terminate_on_nan: false
+model:
+  _target_: src.models.mnist_gln_model.MNISTGLNModel
+  input_size: 784
+  lin1_size: 256
+  lin2_size: 256
+  lin3_size: 256
+  num_classes: 10
+  num_subcontexts: 4
+  pred_clipping: 0.01
+  weight_clipping: 5
+  lr: 0.001
+  weight_decay: 0.0005
+datamodule:
+  _target_: src.datamodules.mnist_datamodule.MNISTDataModule
+  data_dir: ${data_dir}
+  batch_size: 64
+  train_val_test_split:
+  - 55000
+  - 5000
+  - 10000
+  num_workers: 0
+  pin_memory: false
+callbacks:
+  model_checkpoint:
+    _target_: pytorch_lightning.callbacks.ModelCheckpoint
+    monitor: val/acc
+    save_top_k: 1
+    save_last: true
+    mode: max
+    verbose: false
+    dirpath: checkpoints/
+    filename: '{epoch:02d}'
+  early_stopping:
+    _target_: pytorch_lightning.callbacks.EarlyStopping
+    monitor: val/acc
+    patience: 100
+    mode: max
+    min_delta: 0
+work_dir: ${hydra:runtime.cwd}
+data_dir: ${work_dir}/data/
+debug: false
+print_config: true
+disable_warnings: true

@@ -4,22 +4,19 @@ import torch
 from pytorch_lightning import LightningModule
 from pytorch_lightning.metrics.classification import Accuracy
 
-from src.models.modules.simple_dense_net import SimpleDenseNet
+from src.models.modules.binary_gln import BinaryGLN
 
 
 class MNISTGLNModel(LightningModule):
     """
-    Example of LightningModule for MNIST classification.
+    LightningModule for MNIST classification using binary GLN with one-vs-all abstraction.
 
-    A LightningModule organizes your PyTorch code into 5 sections:
+    5 sections for LightningModule:
         - Computations (init).
         - Train loop (training_step)
         - Validation loop (validation_step)
         - Test loop (test_step)
         - Optimizers (configure_optimizers)
-
-    Read the docs:
-        https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html
     """
 
     def __init__(
@@ -28,7 +25,7 @@ class MNISTGLNModel(LightningModule):
         lin1_size: int = 256,
         lin2_size: int = 256,
         lin3_size: int = 256,
-        output_size: int = 10,
+        num_classes: int = 10,
         lr: float = 0.001,
         weight_decay: float = 0.0005,
         **kwargs
@@ -41,10 +38,14 @@ class MNISTGLNModel(LightningModule):
         # it also allows to access params with 'self.hparams' attribute
         self.save_hyperparameters()
 
-        self.model = SimpleDenseNet(hparams=self.hparams)
+        self.num_classes = self.hparams["num_classes"]
+        # self.models = [BinaryGLN(hparams=self.hparams).cuda()
+        #                for i in range(self.num_classes)]
+        self.models = [BinaryGLN(hparams=self.hparams)
+                       for i in range(self.num_classes)]
 
         # loss function
-        # self.criterion = torch.nn.CrossEntropyLoss()
+        self.criterion = torch.nn.NLLLoss()
 
         # use separate metric instance for train, val and test step
         # to ensure a proper reduction over the epoch
@@ -58,19 +59,36 @@ class MNISTGLNModel(LightningModule):
             "train/loss": [],
             "val/loss": [],
         }
+    
+    def to_one_vs_all(self, targets):
+        """
+        Input: Torch tensor of target values (categorical labels)
+        Returns: List of Torch tensors containing one-hot targets
+                    for each class (used for one-vs-all models)
+        """
+        ova_targets = torch.zeros((self.num_classes, len(targets)),
+                                dtype=torch.int)
+        for i in range(self.num_classes):
+            ova_targets[i, :][targets == i] = 1
+        return ova_targets
 
-    def forward(self, x: torch.Tensor):
-        return self.model(x)
+    def forward(self, x: torch.Tensor, y: torch.Tensor):
+        y_ova = self.to_one_vs_all(y)
+        outputs = [self.models[i](x, y_ova[i]).squeeze()
+                   for i in range(self.num_classes)]
+        return torch.stack(outputs).T
 
     def step(self, batch: Any):
         x, y = batch
-        logits = self.forward(x)
+        logits = self.forward(x, y)
         loss = self.criterion(logits, y)
         preds = torch.argmax(logits, dim=1)
         return loss, preds, y
+        # return preds, y
 
     def training_step(self, batch: Any, batch_idx: int):
         loss, preds, targets = self.step(batch)
+        # preds, targets = self.step(batch)
 
         # log train metrics
         acc = self.train_accuracy(preds, targets)
@@ -81,6 +99,7 @@ class MNISTGLNModel(LightningModule):
         # and then read it in some callback or in training_epoch_end() below
         # remember to always return loss from training_step, or else backpropagation will fail!
         return {"loss": loss, "preds": preds, "targets": targets}
+        # return {"preds": preds, "targets": targets}
 
     def training_epoch_end(self, outputs: List[Any]):
         # log best so far train acc and train loss
@@ -91,6 +110,7 @@ class MNISTGLNModel(LightningModule):
 
     def validation_step(self, batch: Any, batch_idx: int):
         loss, preds, targets = self.step(batch)
+        # preds, targets = self.step(batch)
 
         # log val metrics
         acc = self.val_accuracy(preds, targets)
@@ -98,6 +118,7 @@ class MNISTGLNModel(LightningModule):
         self.log("val/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
 
         return {"loss": loss, "preds": preds, "targets": targets}
+        # return {"preds": preds, "targets": targets}
 
     def validation_epoch_end(self, outputs: List[Any]):
         # log best so far val acc and val loss
@@ -108,6 +129,7 @@ class MNISTGLNModel(LightningModule):
 
     def test_step(self, batch: Any, batch_idx: int):
         loss, preds, targets = self.step(batch)
+        # preds, targets = self.step(batch)
 
         # log test metrics
         acc = self.test_accuracy(preds, targets)
@@ -115,17 +137,20 @@ class MNISTGLNModel(LightningModule):
         self.log("test/acc", acc, on_step=False, on_epoch=True)
 
         return {"loss": loss, "preds": preds, "targets": targets}
+        # return {"preds": preds, "targets": targets}
 
     def test_epoch_end(self, outputs: List[Any]):
         pass
 
-    # def configure_optimizers(self):
-    #     """Choose what optimizers and learning-rate schedulers to use in your optimization.
-    #     Normally you'd need one. But in the case of GANs or similar you might have multiple.
+    def configure_optimizers(self):
+        """Choose what optimizers and learning-rate schedulers to use in your optimization.
+        Normally you'd need one. But in the case of GANs or similar you might have multiple.
 
-    #     See examples here:
-    #         https://pytorch-lightning.readthedocs.io./en/latest/common/lightning_module.html#configure-optimizers
-    #     """
-    #     return torch.optim.Adam(
-    #         params=self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay
-    #     )
+        See examples here:
+            https://pytorch-lightning.readthedocs.io./en/latest/common/lightning_module.html#configure-optimizers
+        """
+        # TODO: Check if this optimizer can be removed as it shouldn't be used for the standard GLN
+        # return torch.optim.Adam(
+        #     params=self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay
+        # )
+        return
