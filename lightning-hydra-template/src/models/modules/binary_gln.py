@@ -47,7 +47,7 @@ class HalfSpace(LightningModule):
         """
         super().__init__()
         self.n_subctx = num_subcontexts
-        self.bitwise_map = torch.tensor([2**i for i in range(self.n_subctx)]).to(self.device)
+        self.bitwise_map = torch.tensor([2**i for i in range(self.n_subctx)], device=self.device)
         # Init subcontext functions (half-space gatings)
         self.subctx_fn = []
         for _ in range(self.n_subctx):
@@ -69,7 +69,7 @@ class HalfSpace(LightningModule):
         batch_size = s.shape[0]
         layer_size = self.subctx_fn[0].out_features
         ctx = torch.zeros((batch_size, layer_size),
-                          dtype=torch.long).to(self.device)
+                          dtype=torch.long, device=self.device)
         s_view = s.view(s.shape[0], s.shape[1], -1)
         for i in range(self.n_subctx):
             ctx += (self.subctx_fn[i](s_view) > 0).squeeze() * self.bitwise_map[i]
@@ -142,7 +142,7 @@ class BinaryGLN(LightningModule):
         clip_param = self.hparams["pred_clipping"]
         # rand_activations = torch.empty(batch_size, self.l_sizes[0]).normal_(mean=0.5, std=0.1)
         # rand_activations = torch.empty(batch_size, self.l_sizes[0]).normal_(mean=0.5, std=1.0).cuda()
-        rand_activations = torch.empty(batch_size, self.l_sizes[0]).normal_(mean=0.5, std=1.0)
+        rand_activations = torch.empty((batch_size, self.l_sizes[0]), device=self.device).normal_(mean=0.5, std=1.0)
         rand_activations.requires_grad = False
         x = self.W_base(rand_activations)
         # x = torch.clamp(x, min=clip_param, max=1.0-clip_param)
@@ -165,7 +165,7 @@ class BinaryGLN(LightningModule):
         # x = x.view(batch_size, -1)
         # Base predictor followed by gated layers
         x = self.base_layer(batch_size, self.l_sizes[0])
-        x = self.gated_layer(x, s, self.ctx[0], self.W[0])
-        x = self.gated_layer(x, s, self.ctx[1], self.W[1])
-        x = self.gated_layer(x, s, self.ctx[2], self.W[2])
+        x, w = self.gated_layer(x, s, self.ctx[0], self.W[0])
+        x, w = self.gated_layer(x, s, self.ctx[1], self.W[1])
+        x, w = self.gated_layer(x, s, self.ctx[2], self.W[2])
         return torch.sigmoid(x)
