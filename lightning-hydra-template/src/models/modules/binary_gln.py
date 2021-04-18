@@ -10,14 +10,14 @@ def logit_geo_mix(logit_prev_layer, weights):
     """Geometric weighted mixture of prev_layer using weights
 
     Args:
+        logit_prev_layer ([Float] * n_neurons): Logit of prev layer activations
         weights ([Float] * n_neurons): Weights for neurons in prev layer
-        prev_layer ([Float] * n_neurons): Activations of prev layer
 
     Returns:
         [Float]: sigmoid(w * logit(prev_layer)), i.e. output of current neuron
     """
-    return torch.sigmoid(torch.sum(weights * logit_prev_layer, dim=-1))
-
+    # return torch.sigmoid(torch.sum(weights * logit_prev_layer, dim=-1))
+    return torch.sigmoid(weights.matmul(logit_prev_layer))
 
 class HalfSpace(LightningModule):
     def __init__(self, s_dim, layer_size, num_subcontexts):
@@ -31,11 +31,14 @@ class HalfSpace(LightningModule):
         """
         super().__init__()
         self.n_subctx = num_subcontexts
+        self.layer_size = layer_size
         self.bitwise_map = torch.tensor([2**i for i in range(self.n_subctx)], device=self.device)
         # Init subcontext functions (half-space gatings)
         self.subctx_fn = []
         for _ in range(self.n_subctx):
+            ### GPU
             # new_subctx = nn.Linear(s_dim, layer_size).cuda()
+            ### CPU
             new_subctx = nn.Linear(s_dim, layer_size)
             nn.init.normal_(new_subctx.weight, mean=0.0, std=0.1)
             self.subctx_fn.append(new_subctx)
@@ -51,12 +54,10 @@ class HalfSpace(LightningModule):
                                               sample in batch
         """
         batch_size = s.shape[0]
-        layer_size = self.subctx_fn[0].out_features
-        ctx = torch.zeros((batch_size, layer_size),
+        ctx = torch.zeros((batch_size, self.layer_size),
                           dtype=torch.long, device=self.device)
-        s_view = s.view(s.shape[0], s.shape[1], -1)
         for i in range(self.n_subctx):
-            ctx += (self.subctx_fn[i](s_view) > 0).squeeze() * self.bitwise_map[i]
+            ctx += (self.subctx_fn[i](s.flatten(start_dim=2)) > 0).squeeze(dim=1) * self.bitwise_map[i]
         return ctx
 
 class BinaryGLN(LightningModule):
@@ -65,6 +66,8 @@ class BinaryGLN(LightningModule):
         self.hparams = hparams
         self.ctx = []
         self.W = []
+        self.lr = 0.4
+        self.t = 1
         self.l_sizes = (hparams["lin1_size"], hparams["lin2_size"], hparams["lin3_size"], 1)
         # Weights for base predictor (arbitrary activations)
         # self.W_base = torch.rand((self.l_sizes[0], self.l_sizes[0]), 1.0/self.l_sizes[0])
@@ -74,9 +77,15 @@ class BinaryGLN(LightningModule):
         s_dim = hparams["input_size"]
         for i in range(len(self.l_sizes)-1):  # Add ctx and w for each layer until the single output neuron layer
             curr_layer_dim, next_layer_dim = self.l_sizes[i], self.l_sizes[i+1]
+            ### GPU
             # self.ctx.append(HalfSpace(s_dim,
             #                           curr_layer_dim,
             #                           hparams["num_subcontexts"]).cuda())
+            # self.W.append(torch.full((next_layer_dim,
+            #                           2**hparams["num_subcontexts"],
+            #                           curr_layer_dim),
+            #                          1.0/curr_layer_dim).cuda())
+            ### CPU
             self.ctx.append(HalfSpace(s_dim,
                                       curr_layer_dim,
                                       hparams["num_subcontexts"]))
@@ -85,49 +94,52 @@ class BinaryGLN(LightningModule):
                                       curr_layer_dim),
                                      1.0/curr_layer_dim))
     
-    def gated_layer(self, x, s, l_idx):
+    def gated_layer(self, logit_x, s, y, l_idx):
         """Using provided input activations, context functions, and weights,
            returns the result of the GLN layer
 
         Args:
-            x ([Float * [batch_size, input_layer_dim]]): Input activations (with logit applied)
+            logit_x ([Float * [batch_size, input_layer_dim]]): Input activations (with logit applied)
             s ([Float * [batch_size, s_dim]]): Batch of side info samples s
-            ctx (HalfSpace): Instance of half-space context class
-            w ([Float * [next_layer_dim, num_ctx, input_layer_dim]]): Layer weights
-        
+            y ([Float * [batch_size]]): Batch of binary targets
+            l_idx (Int): Index of layer to use for selecting correct ctx and layer weights
         Returns:
             [Float * [batch_size, next_layer_dim]]: Output of GLN layer
         """
         batch_size = s.shape[0]
         next_layer_dim, _, input_layer_dim = self.W[l_idx].shape
-        weight_clip = self.hparams["weight_clipping"]
-        assert(self.W[l_idx].shape[2] == x.shape[1])
-        assert(x.shape[0] == batch_size)
+        w_clip = self.hparams["weight_clipping"]
+        assert(self.W[l_idx].shape[2] == logit_x.shape[1])
+        assert(logit_x.shape[0] == batch_size)
         c = self.ctx[l_idx].calc(s)  # [batch_size, input_layer_dim]
         assert(c.shape[0] == batch_size)
         assert(len(c[0]) == input_layer_dim)
-        preds = torch.empty((batch_size, next_layer_dim), device=self.device)
+        logit_preds = torch.empty((batch_size, next_layer_dim), device=self.device)
         for j in range(batch_size):
             # Forward for all neurons for sample j
             w_j = self.W[l_idx][:, c[j], range(input_layer_dim)]  # [next_layer_dim, input_layer_dim]
-            preds[j] = w_j.matmul(x[j])
+            logit_preds[j] = w_j.matmul(logit_x[j])
             # Update for sample j
-            t, lr = 0, 0.1
-            w_j = torch.clamp(w_j - lr * (logit_geo_mix(x[j], w_j) - t) * logit(x[j]),
-                              min=-weight_clip, max=weight_clip)
+            # w_j_delta = (logit_geo_mix(logit_x[j], w_j) - y[j]).matmul(logit_x[j])
+            loss = torch.sigmoid(logit_preds[j]) - y[j]  # [next_layer_dim]: Loss for each output neuron
+            w_j_delta = torch.outer(loss, logit_x[j])  # [next_layer_dim, input_layer_dim]
+            if torch.any(torch.isnan(w_j_delta)):
+                raise Exception
+            w_j = torch.clamp(w_j - self.lr * w_j_delta,
+                              min=-w_clip, max=w_clip)
             self.W[l_idx][:, c[j], range(input_layer_dim)] = w_j
-        return preds
+        return logit_preds
 
     def base_layer(self, batch_size, layer_size):
         clip_param = self.hparams["pred_clipping"]
-        # rand_activations = torch.empty(batch_size, self.l_sizes[0]).normal_(mean=0.5, std=0.1)
+        ### GPU
         # rand_activations = torch.empty(batch_size, self.l_sizes[0]).normal_(mean=0.5, std=1.0).cuda()
-        rand_activations = torch.empty((batch_size, self.l_sizes[0]), device=self.device).normal_(mean=0.5, std=1.0)
+        ### CPU
+        rand_activations = torch.empty(batch_size, self.l_sizes[0]).normal_(mean=0.5, std=0.1)
         rand_activations.requires_grad = False
         x = self.W_base(rand_activations)
-        # x = torch.clamp(x, min=clip_param, max=1.0-clip_param)
-        x = logit(x)
-        return x
+        x = torch.clamp(x, min=clip_param, max=1.0-clip_param)
+        return logit(x)
 
     def forward(self, s, y):
         """Calculate output of Gated Linear Network for input x and side info s
@@ -142,12 +154,15 @@ class BinaryGLN(LightningModule):
             [Float * [batch_size]]: Batch of GLN outputs (0 < probability < 1)
         """
         batch_size = s.shape[0]
-        # x = x.view(batch_size, -1)
-        # Base predictor followed by gated layers
-        x = self.base_layer(batch_size, self.l_sizes[0])
-        x = self.gated_layer(x, s, 0)
-        x = self.gated_layer(x, s, 1)
-        x = self.gated_layer(x, s, 2)
+        self.t += batch_size
+        self.lr = min(0.4, 5000/self.t)
+        with torch.no_grad():
+            # x = x.view(batch_size, -1)
+            # Base predictor followed by gated layers
+            x = self.base_layer(batch_size, self.l_sizes[0])
+            x = self.gated_layer(x, s, y, 0)
+            x = self.gated_layer(x, s, y, 1)
+            x = self.gated_layer(x, s, y, 2)
         return torch.sigmoid(x)
 
 ### OLD alternatives for gated_layer

@@ -39,11 +39,12 @@ class MNISTGLNModel(LightningModule):
         self.save_hyperparameters()
 
         self.num_classes = self.hparams["num_classes"]
+        ### GPU
         # self.models = [BinaryGLN(hparams=self.hparams).cuda()
         #                for i in range(self.num_classes)]
+        ### CPU
         self.models = [BinaryGLN(hparams=self.hparams)
                        for i in range(self.num_classes)]
-
         # loss function
         self.criterion = torch.nn.NLLLoss()
 
@@ -67,34 +68,35 @@ class MNISTGLNModel(LightningModule):
                     for each class (used for one-vs-all models)
         """
         ova_targets = torch.zeros((self.num_classes, len(targets)),
-                                dtype=torch.int)
+                                dtype=torch.int, requires_grad=False)
         for i in range(self.num_classes):
             ova_targets[i, :][targets == i] = 1
         return ova_targets
 
     def forward(self, x: torch.Tensor, y: torch.Tensor):
-        y_ova = self.to_one_vs_all(y)
-        outputs = [self.models[i](x, y_ova[i]).squeeze()
-                   for i in range(self.num_classes)]
+        with torch.no_grad():
+            y_ova = self.to_one_vs_all(y)
+            outputs = [self.models[i](x, y_ova[i]).squeeze()
+                    for i in range(self.num_classes)]
         return torch.stack(outputs).T
 
     def step(self, batch: Any):
-        x, y = batch
-        logits = self.forward(x, y).detach()
-        loss = self.criterion(logits, y)
-        preds = torch.argmax(logits, dim=1)
+        with torch.no_grad():
+            x, y = batch
+            logits = self.forward(x, y).detach()
+            loss = self.criterion(logits, y)
+            preds = torch.argmax(logits, dim=1)
         return loss, preds, y
         # return preds, y
 
     def training_step(self, batch: Any, batch_idx: int):
-        loss, preds, targets = self.step(batch)
-        # preds, targets = self.step(batch)
-
-        # log train metrics
-        acc = self.train_accuracy(preds, targets)
-        self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
-        self.log("train/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
-
+        with torch.no_grad():
+            loss, preds, targets = self.step(batch)
+            # preds, targets = self.step(batch)
+            # log train metrics
+            acc = self.train_accuracy(preds, targets)
+            self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
+            self.log("train/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
         # we can return here dict with any tensors
         # and then read it in some callback or in training_epoch_end() below
         # remember to always return loss from training_step, or else backpropagation will fail!
@@ -109,14 +111,13 @@ class MNISTGLNModel(LightningModule):
         self.log("train/loss_best", min(self.metric_hist["train/loss"]), prog_bar=False)
 
     def validation_step(self, batch: Any, batch_idx: int):
-        loss, preds, targets = self.step(batch)
-        # preds, targets = self.step(batch)
-
-        # log val metrics
-        acc = self.val_accuracy(preds, targets)
-        self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
-        self.log("val/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
-
+        with torch.no_grad():
+            loss, preds, targets = self.step(batch)
+            # preds, targets = self.step(batch)
+            # log val metrics
+            acc = self.val_accuracy(preds, targets)
+            self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
+            self.log("val/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
         return {"loss": loss, "preds": preds, "targets": targets}
         # return {"preds": preds, "targets": targets}
 
@@ -128,14 +129,13 @@ class MNISTGLNModel(LightningModule):
         self.log("val/loss_best", min(self.metric_hist["val/loss"]), prog_bar=False)
 
     def test_step(self, batch: Any, batch_idx: int):
-        loss, preds, targets = self.step(batch)
-        # preds, targets = self.step(batch)
-
-        # log test metrics
-        acc = self.test_accuracy(preds, targets)
-        self.log("test/loss", loss, on_step=False, on_epoch=True)
-        self.log("test/acc", acc, on_step=False, on_epoch=True)
-
+        with torch.no_grad():
+            loss, preds, targets = self.step(batch)
+            # preds, targets = self.step(batch)
+            # log test metrics
+            acc = self.test_accuracy(preds, targets)
+            self.log("test/loss", loss, on_step=False, on_epoch=True)
+            self.log("test/acc", acc, on_step=False, on_epoch=True)
         return {"loss": loss, "preds": preds, "targets": targets}
         # return {"preds": preds, "targets": targets}
 
