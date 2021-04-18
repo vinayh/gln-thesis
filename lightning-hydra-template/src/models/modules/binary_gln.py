@@ -6,21 +6,6 @@ from pytorch_lightning import LightningModule
 def logit(x):
     return torch.log(x / (torch.ones_like(x) - x))
 
-def geo_mix(prev_layer, weights):
-    """Geometric weighted mixture of prev_layer using weights
-
-    Args:
-        weights ([Float] * n_neurons): Weights for neurons in prev layer
-        prev_layer ([Float] * n_neurons): Activations of prev layer
-
-    Returns:
-        [Float]: sigmoid(w * logit(prev_layer)), i.e. output of current neuron
-    """
-    return torch.sigmoid(torch.dot(weights, logit(prev_layer)))
-    # tmp_1 = torch.prod(torch.pow(prev_layer, weights))
-    # tmp_2 = torch.prod(torch.pow(1 - prev_layer, weights))
-    # return tmp_1 / (tmp_1 + tmp_2)
-
 def logit_geo_mix(logit_prev_layer, weights):
     """Geometric weighted mixture of prev_layer using weights
 
@@ -31,7 +16,6 @@ def logit_geo_mix(logit_prev_layer, weights):
     Returns:
         [Float]: sigmoid(w * logit(prev_layer)), i.e. output of current neuron
     """
-    # return torch.sigmoid(torch.dot(weights, logit_prev_layer))
     return torch.sigmoid(torch.sum(weights * logit_prev_layer, dim=-1))
 
 
@@ -101,12 +85,12 @@ class BinaryGLN(LightningModule):
                                       curr_layer_dim),
                                      1.0/curr_layer_dim))
     
-    def gated_layer(self, x, s, ctx, w):
+    def gated_layer(self, x, s, l_idx):
         """Using provided input activations, context functions, and weights,
            returns the result of the GLN layer
 
         Args:
-            x ([Float * [batch_size, input_layer_dim]]): Input activations
+            x ([Float * [batch_size, input_layer_dim]]): Input activations (with logit applied)
             s ([Float * [batch_size, s_dim]]): Batch of side info samples s
             ctx (HalfSpace): Instance of half-space context class
             w ([Float * [next_layer_dim, num_ctx, input_layer_dim]]): Layer weights
@@ -115,28 +99,24 @@ class BinaryGLN(LightningModule):
             [Float * [batch_size, next_layer_dim]]: Output of GLN layer
         """
         batch_size = s.shape[0]
-        next_layer_dim, _, input_layer_dim = w.shape
+        next_layer_dim, _, input_layer_dim = self.W[l_idx].shape
         weight_clip = self.hparams["weight_clipping"]
-        assert(w.shape[2] == x.shape[1])
+        assert(self.W[l_idx].shape[2] == x.shape[1])
         assert(x.shape[0] == batch_size)
-        c = ctx.calc(s)  # [batch_size, input_layer_dim]
+        c = self.ctx[l_idx].calc(s)  # [batch_size, input_layer_dim]
         assert(c.shape[0] == batch_size)
         assert(len(c[0]) == input_layer_dim)
-        ###
-        # W_ctx = torch.empty(batch_size, next_layer_dim, input_layer_dim).to(self.device)
-        # for j in range(batch_size):
-        #     # For each sample:
-        #     # Select weights c[j] for each input neuron with contexts c[j, :]
-        #     W_ctx[j] = w[:, c[j], range(input_layer_dim)]  # [next_layer_dim, input_layer_dim]
-        ### Below: potentially faster alternative to above loop
-        W_ctx = torch.stack([w[:, c[j], range(input_layer_dim)] for j in range(batch_size)])
-        ### Three alternatives below
-        # preds = torch.einsum('abc,ac->ab', W_ctx, x)  # TODO optimize using something other than einsum
-        preds = torch.stack([W_ctx[i, :, :].matmul(x[i]) for i in range(batch_size)])  # Seems fastest on laptop CPU
-        # preds = torch.bmm(W_ctx, x.unsqueeze(2)).squeeze()
-        ###
-        w_clipped = torch.clamp(w, min=-weight_clip, max=weight_clip)
-        return preds, w_clipped
+        preds = torch.empty((batch_size, next_layer_dim), device=self.device)
+        for j in range(batch_size):
+            # Forward for all neurons for sample j
+            w_j = self.W[l_idx][:, c[j], range(input_layer_dim)]  # [next_layer_dim, input_layer_dim]
+            preds[j] = w_j.matmul(x[j])
+            # Update for sample j
+            t, lr = 0, 0.1
+            w_j = torch.clamp(w_j - lr * (logit_geo_mix(x[j], w_j) - t) * logit(x[j]),
+                              min=-weight_clip, max=weight_clip)
+            self.W[l_idx][:, c[j], range(input_layer_dim)] = w_j
+        return preds
 
     def base_layer(self, batch_size, layer_size):
         clip_param = self.hparams["pred_clipping"]
@@ -146,7 +126,7 @@ class BinaryGLN(LightningModule):
         rand_activations.requires_grad = False
         x = self.W_base(rand_activations)
         # x = torch.clamp(x, min=clip_param, max=1.0-clip_param)
-        # x = logit(x)
+        x = logit(x)
         return x
 
     def forward(self, s, y):
@@ -165,7 +145,22 @@ class BinaryGLN(LightningModule):
         # x = x.view(batch_size, -1)
         # Base predictor followed by gated layers
         x = self.base_layer(batch_size, self.l_sizes[0])
-        x, w = self.gated_layer(x, s, self.ctx[0], self.W[0])
-        x, w = self.gated_layer(x, s, self.ctx[1], self.W[1])
-        x, w = self.gated_layer(x, s, self.ctx[2], self.W[2])
+        x = self.gated_layer(x, s, 0)
+        x = self.gated_layer(x, s, 1)
+        x = self.gated_layer(x, s, 2)
         return torch.sigmoid(x)
+
+### OLD alternatives for gated_layer
+# W_ctx = torch.empty((batch_size, next_layer_dim, input_layer_dim), device=self.device)
+# for j in range(batch_size):
+#     # For each sample:
+#     # Select weights c[j] for each input neuron with contexts c[j, :]
+#     W_ctx[j] = w[:, c[j], range(input_layer_dim)]  # [next_layer_dim, input_layer_dim]
+### Below: potentially faster alternative to above loop
+# W_ctx = torch.stack([w[:, c[j], range(input_layer_dim)] for j in range(batch_size)])
+
+### Three alternatives below
+# preds = torch.einsum('abc,ac->ab', W_ctx, x)  # TODO optimize using something other than einsum
+# preds = torch.stack([W_ctx[i, :, :].matmul(x[i]) for i in range(batch_size)])  # Seems fastest on laptop CPU
+# preds = torch.bmm(W_ctx, x.unsqueeze(2)).squeeze()
+###
