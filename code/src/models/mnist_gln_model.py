@@ -68,7 +68,8 @@ class MNISTGLNModel(LightningModule):
                     for each class (used for one-vs-all models)
         """
         ova_targets = torch.zeros((self.num_classes, len(targets)),
-                                dtype=torch.int, requires_grad=False)
+                                dtype=torch.int, requires_grad=False,
+                                device=self.device)
         for i in range(self.num_classes):
             ova_targets[i, :][targets == i] = 1
         return ova_targets
@@ -92,7 +93,6 @@ class MNISTGLNModel(LightningModule):
     def training_step(self, batch: Any, batch_idx: int):
         with torch.no_grad():
             loss, preds, targets = self.step(batch)
-            # preds, targets = self.step(batch)
             # log train metrics
             acc = self.train_accuracy(preds, targets)
             self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=False)

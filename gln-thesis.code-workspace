@@ -1,11 +1,9 @@
 {
-	"folders": [
-		{
-			"path": "."
-		}
-	],
-	"settings": {
-		"python.pythonPath": "/home/vinay/.conda/envs/hypercl/bin/python",
-		"jupyter.jupyterServerType": "local"
-	}
+    "folders": [
+        {
+            "path": "."
+        }
+    ],
+    "settings": {
+    }
 }
