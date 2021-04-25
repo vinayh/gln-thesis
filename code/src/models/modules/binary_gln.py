@@ -16,7 +16,6 @@ def logit_geo_mix(logit_prev_layer, weights):
     Returns:
         [Float]: sigmoid(w * logit(prev_layer)), i.e. output of current neuron
     """
-    # return torch.sigmoid(torch.sum(weights * logit_prev_layer, dim=-1))
     return torch.sigmoid(weights.matmul(logit_prev_layer))
 
 class HalfSpace(LightningModule):
@@ -39,29 +38,18 @@ class HalfSpace(LightningModule):
         else:
             input_dim = s_dim
         self.register_buffer("ctx_weights", torch.empty(num_subcontexts, input_dim, layer_size).normal_(mean=0.5, std=1.0))
-        # Init subcontext functions (half-space gatings)
-        # self.subctx_fn = []
-        # for _ in range(self.n_subctx):
-        #     new_subctx = nn.Linear(s_dim, layer_size)
-        #     nn.init.normal_(new_subctx.weight, mean=0.0, std=0.1)
-        #     for param in new_subctx.parameters():
-        #         param.requires_grad = False
-        #     self.subctx_fn.append(new_subctx)
 
     def calc(self, s, gpu=False):
         """Calculates context indices for half-space gating given side info s
 
         Args:
             s ([Float * [batch_size, s_dim]]): Batch of side info samples s
+            gpu (bool): Indicates whether model is running on GPU
 
         Returns:
             [Int * [batch_size, layer_size]]: Context indices for each side info
                                               sample in batch
         """
-        # def get_subctx_val(idx):
-        #     return (self.subctx_fn[idx](s.flatten(start_dim=2)) > 0).squeeze(dim=1) * self.bitwise_map[idx]
-        # ctx = torch.sum(torch.stack([get_subctx_val(i) for i in range(self.n_subctx)]), dim=0)
-        # return ctx
         ctx_results = (torch.einsum('abc,db->dca', self.ctx_weights, s) > 0)
         if gpu:
             contexts = ctx_results.float().matmul(self.bitwise_map.float()).long()
@@ -75,18 +63,17 @@ class BinaryGLN(LightningModule):
         self.hparams = hparams
         self.ctx = []
         self.W = []
-        self.lr = 0.4
         self.t = 0
         self.l_sizes = (hparams["lin1_size"], hparams["lin2_size"], hparams["lin3_size"], 1)
         self.ctx_bias = True
-        # Weights for base predictor (arbitrary activations)
-        # self.W_base = torch.rand((self.l_sizes[0], self.l_sizes[0]), 1.0/self.l_sizes[0])
-        self.W_base = nn.Linear(self.l_sizes[0], self.l_sizes[0])
-        torch.nn.init.normal_(self.W_base.weight.data, mean=0.0, std=0.2)
-        torch.nn.init.normal_(self.W_base.bias.data, mean=0.0, std=0.2)
-        self.W_base.requires_grad_ = False
-        # Context functions and weights for gated layers
         s_dim = hparams["input_size"]
+        # Weights for base predictor (arbitrary activations)
+        # self.W_base = nn.Linear(self.l_sizes[0], self.l_sizes[0])
+        # self.W_base.requires_grad_ = False
+        # torch.nn.init.normal_(self.W_base.weight.data, mean=0.0, std=0.2)
+        # torch.nn.init.normal_(self.W_base.bias.data, mean=0.0, std=0.2)
+
+        # Context functions and weights for gated layers
         for i in range(len(self.l_sizes)-1):  # Add ctx and w for each layer until the single output neuron layer
             curr_layer_dim, next_layer_dim = self.l_sizes[i], self.l_sizes[i+1]
             if self.hparams["gpu"]:
@@ -124,11 +111,7 @@ class BinaryGLN(LightningModule):
         batch_size = s.shape[0]
         input_layer_dim = self.W[l_idx].shape[0]
         w_clip = self.hparams["weight_clipping"]
-        # assert(self.W[l_idx].shape[0] == logit_x.shape[1])
-        # assert(logit_x.shape[0] == batch_size)
         c = self.ctx[l_idx].calc(s, self.hparams["gpu"])  # [batch_size, input_layer_dim]
-        # assert(c.shape[0] == batch_size)
-        # assert(len(c[0]) == input_layer_dim)
         w_ctx = torch.stack([self.W[l_idx][range(input_layer_dim), c[j], :] for j in range(batch_size)])  # [batch_size, input_layer_dim, output_layer_dim]
         logit_preds = torch.bmm(w_ctx.permute(0,2,1), logit_x.unsqueeze(2)).flatten(start_dim=1)  # [batch_size, output_layer_dim]
         if train:
