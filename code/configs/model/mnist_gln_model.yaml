@@ -1,12 +1,13 @@
 _target_: src.models.mnist_gln_model.MNISTGLNModel
 
 input_size: 784
-lin1_size: 2000
-lin2_size: 1000
-lin3_size: 500
+lin1_size: 785
+lin2_size: 100
+lin3_size: 50
 num_classes: 10
 num_subcontexts: 4
 pred_clipping: 0.01
 weight_clipping: 5
 lr: 0.001
 weight_decay: 0.0005
+gpu: false

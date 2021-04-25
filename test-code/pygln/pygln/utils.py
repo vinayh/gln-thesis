@@ -39,42 +39,21 @@ def deskewAll(X):
 
 ###################################################
 
-# def get_mnist(deskewed=True):
-#     from torchvision.datasets import MNIST
-
-#     trainset = MNIST('./data', train=True, download=True)
-#     X_train = trainset.data.numpy().reshape(60000, -1).astype(np.float) / 255
-#     if deskewed:
-#         X_train = deskewAll(X_train)
-#     y_train = trainset.targets.numpy()
-
-#     testset = MNIST('./data', train=False, download=True)
-#     X_test = testset.data.numpy().reshape(10000, -1).astype(np.float) / 255
-#     if deskewed:
-#         X_test = deskewAll(X_test)
-#     y_test = testset.targets.numpy()
-
-#     return X_train, y_train, X_test, y_test
 
 def get_mnist(deskewed=True):
-    import tensorflow as tf
+    from torchvision.datasets import MNIST
 
-    mnist = tf.keras.datasets.mnist
-    (X_train, y_train), (X_test, y_test) = mnist.load_data('mnist.npz')
-    # X_train = torch.tensor(X_train)
-    # y_train = torch.tensor(y_train)
-    # X_test = torch.tensor(X_test)
-    # y_test = torch.tensor(y_test)
-
-    X_train = X_train.reshape(60000, -1).astype(np.float) / 255
+    trainset = MNIST('./data', train=True, download=True)
+    X_train = trainset.data.numpy().reshape(60000, -1).astype(np.float) / 255
     if deskewed:
         X_train = deskewAll(X_train)
-    # y_train = trainset.targets.numpy()
+    y_train = trainset.targets.numpy()
 
-    X_test = X_test.reshape(10000, -1).astype(np.float) / 255
+    testset = MNIST('./data', train=False, download=True)
+    X_test = testset.data.numpy().reshape(10000, -1).astype(np.float) / 255
     if deskewed:
         X_test = deskewAll(X_test)
-    # y_test = testset.targets.numpy()
+    y_test = testset.targets.numpy()
 
     return X_train, y_train, X_test, y_test
 

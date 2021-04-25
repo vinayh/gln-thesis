@@ -5,7 +5,7 @@ from pygln import utils
 from pygln.pytorch import GLN
 
 print('Getting dataset')
-X_train, y_train, X_test, y_test = utils.get_mnist(deskewed=False)
+X_train, y_train, X_test, y_test = utils.get_mnist(deskewed=True)
 
 model = GLN(layer_sizes=[4, 4, 1], input_size=X_train.shape[1],
             num_classes=10)
