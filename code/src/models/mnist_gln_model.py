@@ -61,24 +61,24 @@ class MNISTGLNModel(LightningModule):
             ova_targets[i, :][targets == i] = 1
         return ova_targets
 
-    def forward(self, x: torch.Tensor, y: torch.Tensor, train: bool):
+    def forward(self, x: torch.Tensor, y: torch.Tensor, is_train: bool):
         with torch.no_grad():
             y_ova = self.to_one_vs_all(y)
-            outputs = [self.models[i](x, y_ova[i], train).squeeze()
+            outputs = [self.models[i](x, y_ova[i], is_train).squeeze()
                        for i in range(self.num_classes)]
         return torch.stack(outputs).T
 
-    def step(self, batch: Any, train=True):
+    def step(self, batch: Any, is_train=True):
         with torch.no_grad():
             x, y = batch
-            logits = self.forward(x, y, train)
+            logits = self.forward(x, y, is_train)
             loss = self.criterion(logits, y)
             preds = torch.argmax(logits, dim=1)
         return loss, preds, y
 
     def training_step(self, batch: Any, batch_idx: int):
         with torch.no_grad():
-            loss, preds, targets = self.step(batch)
+            loss, preds, targets = self.step(batch, is_train=True)
             # log train metrics
             acc = self.train_accuracy(preds, targets)
             self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
@@ -98,7 +98,7 @@ class MNISTGLNModel(LightningModule):
 
     def validation_step(self, batch: Any, batch_idx: int):
         with torch.no_grad():
-            loss, preds, targets = self.step(batch, train=False)
+            loss, preds, targets = self.step(batch, is_train=False)
             # log val metrics
             acc = self.val_accuracy(preds, targets)
             self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
@@ -114,7 +114,7 @@ class MNISTGLNModel(LightningModule):
 
     def test_step(self, batch: Any, batch_idx: int):
         with torch.no_grad():
-            loss, preds, targets = self.step(batch, train=False)
+            loss, preds, targets = self.step(batch, is_train=False)
             # log test metrics
             acc = self.test_accuracy(preds, targets)
             self.log("test/loss", loss, on_step=False, on_epoch=True)
