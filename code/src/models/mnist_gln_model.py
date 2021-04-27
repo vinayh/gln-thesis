@@ -29,14 +29,8 @@ class MNISTGLNModel(LightningModule):
         self.save_hyperparameters()
         self.num_classes = self.hparams["num_classes"]
         self.criterion = torch.nn.NLLLoss()
-
-        if self.hparams["gpu"]:
-            self.models = [BinaryGLN(hparams=self.hparams).cuda()
-                        for i in range(self.num_classes)]
-        else:
-            self.models = [BinaryGLN(hparams=self.hparams)
-                        for i in range(self.num_classes)]
-
+        self.models = self.get_models(self.hparams["gpu"])
+        
         self.train_accuracy = Accuracy()
         self.val_accuracy = Accuracy()
         self.test_accuracy = Accuracy()
@@ -47,6 +41,15 @@ class MNISTGLNModel(LightningModule):
             "train/loss": [],
             "val/loss": [],
         }
+
+    def get_models(self, gpu=False):
+        if self.hparams["gpu"]:
+            return [BinaryGLN(hparams=self.hparams).cuda()
+                        for i in range(self.num_classes)]
+        else:
+            return [BinaryGLN(hparams=self.hparams)
+                        for i in range(self.num_classes)]
+
     
     def to_one_vs_all(self, targets):
         """
