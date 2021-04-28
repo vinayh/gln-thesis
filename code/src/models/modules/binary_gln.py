@@ -2,60 +2,9 @@ import torch
 from torch import nn
 from pytorch_lightning import LightningModule
 
+from src.models.modules.rand_halfspace_gln import RandHalfSpaceGLN
+from src.models.modules.helpers import logit
 
-def logit(x):
-    return torch.log(x / (torch.ones_like(x) - x))
-
-def logit_geo_mix(logit_prev_layer, weights):
-    """Geometric weighted mixture of prev_layer using weights
-
-    Args:
-        logit_prev_layer ([Float] * n_neurons): Logit of prev layer activations
-        weights ([Float] * n_neurons): Weights for neurons in prev layer
-
-    Returns:
-        [Float]: sigmoid(w * logit(prev_layer)), i.e. output of current neuron
-    """
-    return torch.sigmoid(weights.matmul(logit_prev_layer))
-
-class HalfSpace(LightningModule):
-    def __init__(self, s_dim, layer_size, num_subcontexts, ctx_bias=True):
-        """Initialize half-space context layer of specified size and num contexts
-
-        Args:
-            s_dim (Int): Size of side info s
-            layer_size (Int): Size of layer to which contexts are applied (output dim)
-            num_subcontexts (Int): Number of half-space subcontexts
-                                   i.e. num_contexts = 2**num_subcontexts
-        """
-        super().__init__()
-        self.ctx_bias = ctx_bias
-        self.n_subctx = num_subcontexts
-        self.layer_size = layer_size
-        self.register_buffer("bitwise_map", torch.tensor([2**i for i in range(self.n_subctx)]))
-        if self.ctx_bias:
-            input_dim = s_dim + 1
-        else:
-            input_dim = s_dim
-        self.register_buffer("ctx_weights", torch.empty(num_subcontexts, input_dim, layer_size).normal_(mean=0.5, std=1.0))
-
-    def calc(self, s, gpu=False):
-        """Calculates context indices for half-space gating given side info s
-
-        Args:
-            s ([Float * [batch_size, s_dim]]): Batch of side info samples s
-            gpu (bool): Indicates whether model is running on GPU
-
-        Returns:
-            [Int * [batch_size, layer_size]]: Context indices for each side info
-                                              sample in batch
-        """
-        ctx_results = (torch.einsum('abc,db->dca', self.ctx_weights, s) > 0)
-        if gpu:
-            contexts = ctx_results.float().matmul(self.bitwise_map.float()).long()
-        else:
-            contexts = ctx_results.long().matmul(self.bitwise_map)
-        return contexts
 
 class BinaryGLN(LightningModule):
     def __init__(self, hparams: dict):
@@ -77,7 +26,7 @@ class BinaryGLN(LightningModule):
         for i in range(len(self.l_sizes)-1):  # Add ctx and w for each layer until the single output neuron layer
             curr_layer_dim, next_layer_dim = self.l_sizes[i], self.l_sizes[i+1]
             if self.hparams["gpu"]:
-                self.ctx.append(HalfSpace(s_dim,
+                self.ctx.append(RandHalfSpaceGLN(s_dim,
                                           curr_layer_dim,
                                           hparams["num_subcontexts"],
                                           ctx_bias=self.ctx_bias).cuda())
@@ -86,7 +35,7 @@ class BinaryGLN(LightningModule):
                                       next_layer_dim),
                                      1.0/curr_layer_dim).cuda())
             else:
-                self.ctx.append(HalfSpace(s_dim,
+                self.ctx.append(RandHalfSpaceGLN(s_dim,
                                         curr_layer_dim,
                                         hparams["num_subcontexts"],
                                         ctx_bias=self.ctx_bias))
