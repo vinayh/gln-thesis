@@ -5,41 +5,48 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Train",
+            "name": "Train GLN",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/code/run.py"
         },
         {
-            "name": "Train - Debug",
+            "name": "Train GLN - Debug",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/code/run.py",
             "args": ["trainer=debug_trainer"]
         },
         {
-            "name": "Train - Debug, Fashion",
+            "name": "Train DGN - Debug",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/code/run.py",
-            "args": ["trainer=debug_trainer", "datamodule=fashionmnist_datamodule"]
+            "args": ["trainer=debug_trainer", "model=mnist_dgn_model"]
         },
+        // {
+        //     "name": "Train GLN - Debug, Fashion",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/code/run.py",
+        //     "args": ["trainer=debug_trainer", "datamodule=fashionmnist_datamodule"]
+        // },
+        // {
+        //     "name": "Train GLN - Debug, Deskew",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/code/run.py",
+        //     "args": ["trainer=debug_trainer", "datamodule.deskew=true"]
+        // },
         {
-            "name": "Train - Debug, Deskew",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/code/run.py",
-            "args": ["trainer=debug_trainer", "datamodule.deskew=true"]
-        },
-        {
-            "name": "Train - GPU",
+            "name": "Train GLN - GPU",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/code/run.py",
             "args": ["trainer.gpus=1", "model.gpu=true"]
         },
         {
-            "name": "Train - Debug, GPU",
+            "name": "Train GLN - Debug, GPU",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/code/run.py",
