@@ -14,7 +14,9 @@ class RandHalfSpaceDGN(LightningModule):
         """
         super().__init__()
         self.register_buffer("hyperplanes", torch.empty(layer_size, num_branches, num_features).normal_(mean=0, std=1.0))
+
         self.hyperplanes = self.hyperplanes / torch.linalg.norm(self.hyperplanes[:, :, :-1], axis=(1, 2))[:, None, None]
+        self.hyperplanes[:, :, -1].normal_(mean=0, std=0.05)
 
     def calc(self, s, gpu=False):
         """Calculates context indices for half-space gating given side info s

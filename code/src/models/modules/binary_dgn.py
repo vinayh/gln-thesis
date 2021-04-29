@@ -52,7 +52,7 @@ class BinaryDGN(LightningModule):
         # assert(input_dim == h.shape[1])
         t = y.unsqueeze(1)
         c = self.ctx[l_idx].calc(s, self.hparams["gpu"])  # [batch_size, layer_dim]
-        weights = torch.einsum('abc,cbd->acd', c.float(), self.W[l_idx])  # [batch_size, layer_dim, input_dim]
+        weights = torch.bmm(c.float().permute(2,0,1), self.W[l_idx]).permute(1,0,2)  # [batch_size, layer_dim, input_dim]
         h_out = torch.bmm(weights, h.unsqueeze(2)).squeeze(2)  # [batch_size, layer_dim]
         if is_train:
             r_out = torch.sigmoid(h_out)
@@ -79,7 +79,7 @@ class BinaryDGN(LightningModule):
         if is_train:
             self.t += 1
         # self.lr = min(0.6, 1.0/(1.0 + 1e-2 * self.t))
-        self.lr = 1e-4
+        self.lr = self.hparams["lr"]
         s = s.flatten(start_dim=1)
         h = torch.empty_like(s).copy_(s)
         s = torch.cat([torch.ones(batch_size, 1, device=self.device), s], dim=1)

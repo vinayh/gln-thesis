@@ -5,24 +5,18 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Train GLN",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/code/run.py"
-        },
-        {
-            "name": "Train GLN - Debug",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/code/run.py",
-            "args": ["trainer=debug_trainer"]
-        },
-        {
             "name": "Train DGN - Debug",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/code/run.py",
             "args": ["trainer=debug_trainer", "model=mnist_dgn_model"]
+        },
+        {
+            "name": "Train DGN - Debug, Fashion",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": ["trainer=debug_trainer", "model=mnist_dgn_model", "datamodule.fashionmnist=true"]
         },
         // {
         //     "name": "Train GLN - Debug, Fashion",
@@ -51,6 +45,26 @@
             "request": "launch",
             "program": "${workspaceFolder}/code/run.py",
             "args": ["trainer=debug_trainer", "trainer.gpus=1", "model.gpu=true"]
+        },
+        {
+            "name": "Train GLN",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py"
+        },
+        {
+            "name": "Train GLN - Debug",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": ["trainer=debug_trainer"]
+        },
+        {
+            "name": "Train DGN",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": ["model=mnist_dgn_model"]
         },
         {
             "type": "python",
