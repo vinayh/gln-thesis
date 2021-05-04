@@ -82,11 +82,9 @@ class MNISTGLNModel(LightningModule):
     def training_step(self, batch: Any, batch_idx: int):
         with torch.no_grad():
             loss, preds, targets = self.step(batch, is_train=True)
-            # log train metrics
             acc = self.train_accuracy(preds, targets)
             self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
             self.log("train/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
-            # Log learning rate in progress bar
             self.log("lr", self.models[0].lr, on_step=True, on_epoch=True, prog_bar=True)
         # we can return here dict with any tensors
         # and then read it in some callback or in training_epoch_end() below

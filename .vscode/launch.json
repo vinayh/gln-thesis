@@ -9,7 +9,7 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/code/run.py",
-            "args": ["trainer=debug_trainer", "model=mnist_dgn_model"]
+            "args": ["trainer=debug_trainer", "model=mnist_dgn_model", "logger=tensorboard"]
         },
         {
             "name": "Train DGN - Debug, Fashion",
@@ -17,6 +17,13 @@
             "request": "launch",
             "program": "${workspaceFolder}/code/run.py",
             "args": ["trainer=debug_trainer", "model=mnist_dgn_model", "datamodule.fashionmnist=true"]
+        },
+        {
+            "name": "Train toy clustering",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": ["trainer=debug_trainer", "model=toy_clustering_dgn_model", "datamodule=toy_clustering_datamodule"]
         },
         // {
         //     "name": "Train GLN - Debug, Fashion",

@@ -5,7 +5,7 @@ from src.models.modules.rand_halfspace_dgn import RandHalfSpaceDGN
 
 
 class BinaryDGN(LightningModule):
-    def __init__(self, hparams: dict):
+    def __init__(self, hparams: dict, binary_class: int):
         super().__init__()
         self.hparams = hparams
         self.ctx = []
@@ -18,9 +18,18 @@ class BinaryDGN(LightningModule):
         num_branches = hparams["num_branches"]
 
         # Context functions and weights for gated layers
-        for i in range(1, len(self.num_neurons)):  # Add ctx and w for each layer until the single output neuron layer
+        for i in range(1, len(self.num_neurons)):
             input_dim, layer_dim = self.num_neurons[i-1], self.num_neurons[i]
-            layer_ctx = RandHalfSpaceDGN(s_dim + 1, layer_dim, num_branches, ctx_bias=self.ctx_bias)
+            layer_ctx = RandHalfSpaceDGN(s_dim + 1, layer_dim, num_branches,
+                                         ctx_bias=self.ctx_bias,
+                                         trained_ctx=hparams["trained_ctx"])
+
+            if hparams["svm_context"] and i == 3:
+                svm1_coef = torch.tensor(torch.load('../../../../svm1_coef.pt'))
+                svm1_intercept = torch.tensor(torch.load('../../../../svm1_intercept.pt'))
+                layer_ctx.hyperplanes[0, 0, :-1] = svm1_coef[binary_class]
+                layer_ctx.hyperplanes[0, 0, -1] = svm1_intercept[binary_class]
+
             # layer_W = torch.full((layer_dim, num_branches, input_dim),
             #                      1.0/input_dim)
             layer_W = torch.zeros(layer_dim, num_branches, input_dim + 1)
@@ -30,8 +39,6 @@ class BinaryDGN(LightningModule):
             else:
                 self.ctx.append(layer_ctx)
                 self.W.append(layer_W)
-            continue
-        return
     
     def gated_layer(self, h, s, y, l_idx, is_train):
         """Using provided input activations, context functions, and weights,
@@ -78,11 +85,11 @@ class BinaryDGN(LightningModule):
         batch_size = s.shape[0]
         if is_train:
             self.t += 1
-        # self.lr = min(0.6, 1.0/(1.0 + 1e-2 * self.t))
+        # self.lr = min(self.hparams["lr"], (1.1*self.hparams["lr"])/(1.0 + 1e-2 * self.t))
         self.lr = self.hparams["lr"]
         s = s.flatten(start_dim=1)
         h = torch.empty_like(s).copy_(s)
-        s = torch.cat([torch.ones(batch_size, 1, device=self.device), s], dim=1)
+        s = torch.cat([s, torch.ones(batch_size, 1, device=self.device)], dim=1)
         h = torch.clamp(torch.sigmoid(h), self.pred_clip, 1 - self.pred_clip)
         with torch.no_grad():
             h = self.gated_layer(h, s, y, 0, is_train)
