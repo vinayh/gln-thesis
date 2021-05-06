@@ -7,9 +7,9 @@ from pytorch_lightning.metrics.classification import Accuracy
 from src.models.modules.binary_gln import BinaryGLN
 
 
-class MNISTGLNModel(LightningModule):
+class GLNModel(LightningModule):
     """
-    LightningModule for MNIST classification using binary GLN with one-vs-all abstraction.
+    LightningModule for classification (e.g. MNIST) using binary GLN with one-vs-all abstraction.
     """
 
     def __init__(

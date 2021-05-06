@@ -1,4 +1,4 @@
-_target_: src.models.mnist_dgn_model.MNISTDGNModel
+_target_: src.models.dgn_model.DGNModel
 
 input_size: 2
 lin1_size: 100

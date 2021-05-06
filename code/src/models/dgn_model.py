@@ -2,13 +2,13 @@ from typing import Any, List
 
 import torch
 
-from src.models.mnist_gln_model import MNISTGLNModel
+from src.models.gln_model import GLNModel
 from src.models.modules.binary_dgn import BinaryDGN
 
 
-class MNISTDGNModel(MNISTGLNModel):
+class DGNModel(GLNModel):
     def __init__(*args, **kwargs):
-        MNISTGLNModel.__init__(*args, **kwargs)
+        GLNModel.__init__(*args, **kwargs)
     
     def get_models(self, gpu=False):
         if self.hparams["gpu"]:

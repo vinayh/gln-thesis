@@ -1,4 +1,4 @@
-_target_: src.models.mnist_gln_model.MNISTGLNModel
+_target_: src.models.gln_model.GLNModel
 
 input_size: 784
 lin1_size: 10
