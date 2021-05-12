@@ -7,6 +7,7 @@ from torchvision.transforms import transforms
 
 from src.datamodules.mnist_utils import deskew_fn
 
+
 class MNISTDataModule(LightningDataModule):
     """
     A DataModule implements 5 key methods:
@@ -69,8 +70,10 @@ class MNISTDataModule(LightningDataModule):
 
     def setup(self, stage: Optional[str] = None):
         """Load data. Set variables: self.data_train, self.data_val, self.data_test."""
-        trainset = self.dataset_fn(self.data_dir, train=True, transform=self.transforms)
-        testset = self.dataset_fn(self.data_dir, train=False, transform=self.transforms)
+        trainset = self.dataset_fn(
+            self.data_dir, train=True, transform=self.transforms)
+        testset = self.dataset_fn(
+            self.data_dir, train=False, transform=self.transforms)
         dataset = ConcatDataset(datasets=[trainset, testset])
         self.data_train, self.data_val, self.data_test = random_split(
             dataset, self.train_val_test_split

@@ -13,8 +13,11 @@ class RandHalfSpaceDGN(LightningModule):
             num_branches (Int): Number of half-space gating branches
         """
         super().__init__()
-        self.register_buffer("hyperplanes", torch.empty(layer_size, num_branches, num_features).normal_(mean=0, std=1.0))
-        self.hyperplanes = self.hyperplanes / torch.linalg.norm(self.hyperplanes[:, :, :-1], axis=(1, 2))[:, None, None]
+        self.register_buffer("hyperplanes", torch.empty(
+            layer_size, num_branches, num_features).normal_(mean=0, std=1.0))
+        self.hyperplanes = self.hyperplanes / \
+            torch.linalg.norm(
+                self.hyperplanes[:, :, :-1], axis=(1, 2))[:, None, None]
         self.hyperplanes[:, :, -1].normal_(mean=0, std=0.05)
 
     def calc(self, s, gpu=False):
@@ -29,4 +32,4 @@ class RandHalfSpaceDGN(LightningModule):
                                               sample in batch
         """
         # return (torch.einsum('abc,dc->dba', self.hyperplanes, s) > 0).bool()
-        return (self.hyperplanes.matmul(s.permute(1,0)).permute(2,1,0) > 0).bool()
+        return (self.hyperplanes.matmul(s.permute(1, 0)).permute(2, 1, 0) > 0).bool()

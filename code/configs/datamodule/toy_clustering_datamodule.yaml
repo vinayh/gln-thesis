@@ -1,6 +1,6 @@
 _target_: src.datamodules.toy_clustering_datamodule.ToyClusteringDataModule
 
-data_dir: ${data_dir}  # data_dir is specified in config.yaml
+data_dir: ${data_dir} # data_dir is specified in config.yaml
 batch_size: 16
 num_samples: 50
 train_val_test_split: [40, 5, 5]

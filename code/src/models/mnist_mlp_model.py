@@ -72,7 +72,8 @@ class MNISTLitModel(LightningModule):
 
         # log train metrics
         acc = self.train_accuracy(preds, targets)
-        self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
+        self.log("train/loss", loss, on_step=False,
+                 on_epoch=True, prog_bar=False)
         self.log("train/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
 
         # we can return here dict with any tensors
@@ -82,27 +83,36 @@ class MNISTLitModel(LightningModule):
 
     def training_epoch_end(self, outputs: List[Any]):
         # log best so far train acc and train loss
-        self.metric_hist["train/acc"].append(self.trainer.callback_metrics["train/acc"])
-        self.metric_hist["train/loss"].append(self.trainer.callback_metrics["train/loss"])
-        self.log("train/acc_best", max(self.metric_hist["train/acc"]), prog_bar=False)
-        self.log("train/loss_best", min(self.metric_hist["train/loss"]), prog_bar=False)
+        self.metric_hist["train/acc"].append(
+            self.trainer.callback_metrics["train/acc"])
+        self.metric_hist["train/loss"].append(
+            self.trainer.callback_metrics["train/loss"])
+        self.log("train/acc_best",
+                 max(self.metric_hist["train/acc"]), prog_bar=False)
+        self.log("train/loss_best",
+                 min(self.metric_hist["train/loss"]), prog_bar=False)
 
     def validation_step(self, batch: Any, batch_idx: int):
         loss, preds, targets = self.step(batch)
 
         # log val metrics
         acc = self.val_accuracy(preds, targets)
-        self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
+        self.log("val/loss", loss, on_step=False,
+                 on_epoch=True, prog_bar=False)
         self.log("val/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
 
         return {"loss": loss, "preds": preds, "targets": targets}
 
     def validation_epoch_end(self, outputs: List[Any]):
         # log best so far val acc and val loss
-        self.metric_hist["val/acc"].append(self.trainer.callback_metrics["val/acc"])
-        self.metric_hist["val/loss"].append(self.trainer.callback_metrics["val/loss"])
-        self.log("val/acc_best", max(self.metric_hist["val/acc"]), prog_bar=False)
-        self.log("val/loss_best", min(self.metric_hist["val/loss"]), prog_bar=False)
+        self.metric_hist["val/acc"].append(
+            self.trainer.callback_metrics["val/acc"])
+        self.metric_hist["val/loss"].append(
+            self.trainer.callback_metrics["val/loss"])
+        self.log("val/acc_best",
+                 max(self.metric_hist["val/acc"]), prog_bar=False)
+        self.log("val/loss_best",
+                 min(self.metric_hist["val/loss"]), prog_bar=False)
 
     def test_step(self, batch: Any, batch_idx: int):
         loss, preds, targets = self.step(batch)

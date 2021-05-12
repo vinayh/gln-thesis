@@ -1,7 +1,9 @@
 import torch
 
+
 def logit(x):
     return torch.log(x / (torch.ones_like(x) - x))
+
 
 def logit_geo_mix(logit_prev_layer, weights):
     """Geometric weighted mixture of prev_layer using weights

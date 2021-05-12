@@ -30,7 +30,7 @@ class GLNModel(LightningModule):
         self.num_classes = self.hparams["num_classes"]
         self.criterion = torch.nn.NLLLoss()
         self.models = self.get_models(self.hparams["gpu"])
-        
+
         self.train_accuracy = Accuracy()
         self.val_accuracy = Accuracy()
         self.test_accuracy = Accuracy()
@@ -45,12 +45,11 @@ class GLNModel(LightningModule):
     def get_models(self, gpu=False):
         if self.hparams["gpu"]:
             return [BinaryGLN(hparams=self.hparams).cuda()
-                        for i in range(self.num_classes)]
+                    for i in range(self.num_classes)]
         else:
             return [BinaryGLN(hparams=self.hparams)
-                        for i in range(self.num_classes)]
+                    for i in range(self.num_classes)]
 
-    
     def to_one_vs_all(self, targets):
         """
         Input: Torch tensor of target values (categorical labels)
@@ -58,8 +57,8 @@ class GLNModel(LightningModule):
                     for each class (used for one-vs-all models)
         """
         ova_targets = torch.zeros((self.num_classes, len(targets)),
-                                dtype=torch.int, requires_grad=False,
-                                device=self.device)
+                                  dtype=torch.int, requires_grad=False,
+                                  device=self.device)
         for i in range(self.num_classes):
             ova_targets[i, :][targets == i] = 1
         return ova_targets
@@ -83,35 +82,48 @@ class GLNModel(LightningModule):
         with torch.no_grad():
             loss, preds, targets = self.step(batch, is_train=True)
             acc = self.train_accuracy(preds, targets)
-            self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
-            self.log("train/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
-            self.log("lr", self.models[0].lr, on_step=True, on_epoch=True, prog_bar=True)
+            self.log("train/loss", loss, on_step=False,
+                     on_epoch=True, prog_bar=False)
+            self.log("train/acc", acc, on_step=False,
+                     on_epoch=True, prog_bar=True)
+            self.log("lr", self.models[0].lr,
+                     on_step=True, on_epoch=True, prog_bar=True)
         # we can return here dict with any tensors
         # and then read it in some callback or in training_epoch_end() below
         return {"loss": loss, "preds": preds, "targets": targets}
 
     def training_epoch_end(self, outputs: List[Any]):
         # log best so far train acc and train loss
-        self.metric_hist["train/acc"].append(self.trainer.callback_metrics["train/acc"])
-        self.metric_hist["train/loss"].append(self.trainer.callback_metrics["train/loss"])
-        self.log("train/acc_best", max(self.metric_hist["train/acc"]), prog_bar=False)
-        self.log("train/loss_best", min(self.metric_hist["train/loss"]), prog_bar=False)
+        self.metric_hist["train/acc"].append(
+            self.trainer.callback_metrics["train/acc"])
+        self.metric_hist["train/loss"].append(
+            self.trainer.callback_metrics["train/loss"])
+        self.log("train/acc_best",
+                 max(self.metric_hist["train/acc"]), prog_bar=False)
+        self.log("train/loss_best",
+                 min(self.metric_hist["train/loss"]), prog_bar=False)
 
     def validation_step(self, batch: Any, batch_idx: int):
         with torch.no_grad():
             loss, preds, targets = self.step(batch, is_train=False)
             # log val metrics
             acc = self.val_accuracy(preds, targets)
-            self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
-            self.log("val/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
+            self.log("val/loss", loss, on_step=False,
+                     on_epoch=True, prog_bar=False)
+            self.log("val/acc", acc, on_step=False,
+                     on_epoch=True, prog_bar=True)
         return {"loss": loss, "preds": preds, "targets": targets}
 
     def validation_epoch_end(self, outputs: List[Any]):
         # log best so far val acc and val loss
-        self.metric_hist["val/acc"].append(self.trainer.callback_metrics["val/acc"])
-        self.metric_hist["val/loss"].append(self.trainer.callback_metrics["val/loss"])
-        self.log("val/acc_best", max(self.metric_hist["val/acc"]), prog_bar=False)
-        self.log("val/loss_best", min(self.metric_hist["val/loss"]), prog_bar=False)
+        self.metric_hist["val/acc"].append(
+            self.trainer.callback_metrics["val/acc"])
+        self.metric_hist["val/loss"].append(
+            self.trainer.callback_metrics["val/loss"])
+        self.log("val/acc_best",
+                 max(self.metric_hist["val/acc"]), prog_bar=False)
+        self.log("val/loss_best",
+                 min(self.metric_hist["val/loss"]), prog_bar=False)
 
     def test_step(self, batch: Any, batch_idx: int):
         with torch.no_grad():

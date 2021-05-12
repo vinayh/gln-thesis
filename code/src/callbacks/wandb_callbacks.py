@@ -111,7 +111,8 @@ class LogConfusionMatrixToWandb(Callback):
             preds = torch.cat(self.preds).cpu().numpy()
             targets = torch.cat(self.targets).cpu().numpy()
 
-            confusion_matrix = metrics.confusion_matrix(y_true=targets, y_pred=preds)
+            confusion_matrix = metrics.confusion_matrix(
+                y_true=targets, y_pred=preds)
 
             # set figure size
             plt.figure(figsize=(14, 8))
@@ -120,10 +121,12 @@ class LogConfusionMatrixToWandb(Callback):
             sn.set(font_scale=1.4)
 
             # set font size
-            sn.heatmap(confusion_matrix, annot=True, annot_kws={"size": 8}, fmt="g")
+            sn.heatmap(confusion_matrix, annot=True,
+                       annot_kws={"size": 8}, fmt="g")
 
             # names should be uniqe or else charts from different experiments in wandb will overlap
-            experiment.log({f"confusion_matrix/{experiment.name}": wandb.Image(plt)}, commit=False)
+            experiment.log(
+                {f"confusion_matrix/{experiment.name}": wandb.Image(plt)}, commit=False)
 
             # according to wandb docs this should also work but it crashes
             # experiment.log(f{"confusion_matrix/{experiment.name}": plt})
@@ -189,7 +192,8 @@ class LogF1PrecRecHeatmapToWandb(Callback):
             )
 
             # names should be uniqe or else charts from different experiments in wandb will overlap
-            experiment.log({f"f1_p_r_heatmap/{experiment.name}": wandb.Image(plt)}, commit=False)
+            experiment.log(
+                {f"f1_p_r_heatmap/{experiment.name}": wandb.Image(plt)}, commit=False)
 
             # reset plot
             plt.clf()

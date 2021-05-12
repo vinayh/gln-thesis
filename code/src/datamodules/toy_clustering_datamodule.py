@@ -10,6 +10,7 @@ from torchvision.transforms import transforms
 
 # from src.datamodules.mnist_utils import deskew_fn
 
+
 class ToyClusteringDataModule(LightningDataModule):
     """
     A DataModule implements 5 key methods:
@@ -65,9 +66,10 @@ class ToyClusteringDataModule(LightningDataModule):
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
         self.data_test: Optional[Dataset] = None
-    
+
     def gen_dataset(self, num_samples=50, num_classes=3, dim=2):
-        centroids = 20 * np.random.rand(num_classes, dim) + (-10 * np.ones(dim))
+        centroids = 20 * \
+            np.random.rand(num_classes, dim) + (-10 * np.ones(dim))
         data = np.zeros((num_samples, dim+1))
         added = 0
         for i, c in enumerate(centroids):

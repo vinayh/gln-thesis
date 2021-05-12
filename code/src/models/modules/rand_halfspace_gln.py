@@ -17,8 +17,10 @@ class RandHalfSpaceGLN(LightningModule):
         self.ctx_bias = ctx_bias
         self.n_subctx = num_subcontexts
         self.layer_size = layer_size
-        self.register_buffer("bitwise_map", torch.tensor([2**i for i in range(self.n_subctx)]))
-        self.register_buffer("ctx_weights", torch.empty(num_subcontexts, s_dim, layer_size).normal_(mean=0.5, std=1.0))
+        self.register_buffer("bitwise_map", torch.tensor(
+            [2**i for i in range(self.n_subctx)]))
+        self.register_buffer("ctx_weights", torch.empty(
+            num_subcontexts, s_dim, layer_size).normal_(mean=0.5, std=1.0))
 
     def calc(self, s, gpu=False):
         """Calculates context indices for half-space gating given side info s
@@ -34,7 +36,7 @@ class RandHalfSpaceGLN(LightningModule):
         # ctx_results = (torch.einsum('abc,db->dca', self.ctx_weights, s) > 0)
         ctx_dist = torch.matmul(s.expand(self.n_subctx, s.shape[0], s.shape[1]),
                                 self.ctx_weights)
-        ctx_results = (ctx_dist > 0).permute(1,2,0)
+        ctx_results = (ctx_dist > 0).permute(1, 2, 0)
         if gpu:
             contexts = ctx_results.float().matmul(self.bitwise_map.float()).long()
         else:
