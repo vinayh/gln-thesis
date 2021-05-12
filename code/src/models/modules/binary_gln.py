@@ -41,6 +41,10 @@ class BinaryGLN(LightningModule):
                 self.ctx.append(new_ctx)
                 self.W.append(new_W)
 
+    def lr(self):
+        # return 0.1
+        return min(0.1, 0.2/(1.0 + 1e-2 * self.t))
+
     def gated_layer(self, logit_x, s, y, l_idx, is_train):
         """Using provided input activations, context functions, and weights,
            returns the result of the GLN layer
@@ -69,7 +73,7 @@ class BinaryGLN(LightningModule):
             loss = torch.sigmoid(logit_out) - y.unsqueeze(1)
             # w_delta = torch.einsum('ab,ac->acb', loss, logit_x)  # [batch_size, input_dim, output_layer_dim]
             w_delta = torch.bmm(loss.unsqueeze(2), logit_x.unsqueeze(1))
-            w_new = torch.clamp(w_ctx - self.lr * w_delta,
+            w_new = torch.clamp(w_ctx - self.lr() * w_delta,
                                 min=-self.w_clip, max=self.w_clip)
             # [batch_size, input_dim, output_layer_dim]
             for j in range(batch_size):
@@ -108,8 +112,6 @@ class BinaryGLN(LightningModule):
         s = s.flatten(start_dim=1)
         if is_train:
             self.t += 1
-        self.lr = min(0.1, 0.2/(1.0 + 1e-2 * self.t))
-        # self.lr = 0.1
         with torch.no_grad():
             x = self.base_layer(s, y, self.l_sizes[0])
             s = torch.cat(

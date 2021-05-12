@@ -86,7 +86,7 @@ class GLNModel(LightningModule):
                      on_epoch=True, prog_bar=False)
             self.log("train/acc", acc, on_step=False,
                      on_epoch=True, prog_bar=True)
-            self.log("lr", self.models[0].lr,
+            self.log("lr", self.models[0].lr(),
                      on_step=True, on_epoch=True, prog_bar=True)
         # we can return here dict with any tensors
         # and then read it in some callback or in training_epoch_end() below
