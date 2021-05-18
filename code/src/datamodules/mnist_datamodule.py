@@ -4,6 +4,7 @@ from pytorch_lightning import LightningDataModule
 from torch.utils.data import ConcatDataset, DataLoader, Dataset, random_split
 from torchvision.datasets import MNIST, FashionMNIST
 from torchvision.transforms import transforms
+from torch import Generator
 
 from src.datamodules.mnist_utils import deskew_fn
 
@@ -76,7 +77,8 @@ class MNISTDataModule(LightningDataModule):
             self.data_dir, train=False, transform=self.transforms)
         dataset = ConcatDataset(datasets=[trainset, testset])
         self.data_train, self.data_val, self.data_test = random_split(
-            dataset, self.train_val_test_split
+            dataset, self.train_val_test_split,
+            generator=Generator().manual_seed(42)
         )
 
     def train_dataloader(self):
@@ -85,7 +87,7 @@ class MNISTDataModule(LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
-            shuffle=True,
+            shuffle=False,
         )
 
     def val_dataloader(self):

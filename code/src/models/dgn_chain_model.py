@@ -1,19 +1,15 @@
-from typing import Any, List
-
 import torch
 import numpy as np
 
-from pytorch_lightning import LightningModule
-from sklearn.svm import SVC, LinearSVC
-from torchvision.datasets import MNIST
-from torchvision.transforms import transforms
-from torch.utils.data import DataLoader, ConcatDataset
+from sklearn.svm import LinearSVC
+from torch.utils.data import DataLoader, ConcatDataset, random_split
+from torch import Generator
 
-from src.models.gln_model import GLNModel
+from src.models.ova_model import OVAModel
 from src.models.modules.binary_dgn_chain import BinaryDGNChain
 
 
-class DGNChainModel(GLNModel):
+class DGNChainModel(OVAModel):
     """
     LightningModule for classification (e.g. MNIST) using chain of
     single-neuron binary DGN layers with context vectors pre-trained
@@ -21,17 +17,29 @@ class DGNChainModel(GLNModel):
     misclassified samples
     """
     def __init__(*args, **kwargs):
-        GLNModel.__init__(*args, **kwargs)
+        OVAModel.__init__(*args, **kwargs)
+
+    # def get_dataset(self, include_test=False):
+    #     data_dir = "../../../../data/"
+    #     t = transforms.Compose(
+    #         [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+    #     trainset = MNIST(data_dir, train=True, download=True, transform=t)
+    #     testset = MNIST(data_dir, train=False, download=True, transform=t)
+    #     dataset = ConcatDataset(datasets=[trainset, testset])
+    #     train, val, test = random_split(
+    #         dataset, self.hparams["train_val_test_split"],
+    #         generator=Generator().manual_seed(42))
+    #     loader = DataLoader(dataset=train, batch_size=len(train))
+    #     X, y = next(iter(loader))
+    #     return X.flatten(start_dim=1), y
 
     def get_dataset(self, include_test=False):
-        data_dir = "../../../../data/"
-        t = transforms.Compose(
-            [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
-        dataset = MNIST(data_dir, train=True, download=True, transform=t)
-        if include_test:
-            testset = MNIST(data_dir, train=False, download=True, transform=t)
-            dataset = ConcatDataset(datasets=[dataset, testset])
-        loader = DataLoader(dataset=dataset, batch_size=len(dataset))
+        self.hparams["datamodule"].setup()
+        self.hparams["datamodule"].prepare_data()
+        trainset = self.hparams["datamodule"].data_train
+        loader = DataLoader(dataset=trainset,
+                            batch_size=len(trainset),
+                            shuffle=False)
         X, y = next(iter(loader))
         return X.flatten(start_dim=1), y
 
@@ -71,14 +79,13 @@ class DGNChainModel(GLNModel):
         return pretrained
 
     def get_models(self, gpu=False):
-        X, y = self.get_dataset(include_test=False)
-        use_saved_svm = True
-        if use_saved_svm:
+        if self.hparams["use_saved_svm"]:
             print('Loading previously saved SVM-based contexts')
             self.pretrained = torch.load(
                 '../../../../pretrained_dgn_svm_coef.pt')
         else:
             print('Training SVM models on dataset to generate SVM-based contexts')
+            X, y = self.get_dataset(include_test=False)
             self.pretrained = self.get_pretrained(X, y)
             torch.save(self.pretrained,
                        '../../../../pretrained_dgn_svm_coef.pt')

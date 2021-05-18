@@ -65,7 +65,8 @@ class BinaryDGN(LightningModule):
             [torch.ones(h.shape[0], 1, device=self.device), h], dim=1)
         assert(input_dim == h.shape[1])
         t = y.unsqueeze(1)
-        c = self.ctx[l_idx].calc(s, self.gpu)  # [batch_size, layer_dim]
+        # [batch_size, layer_dim]
+        c = self.ctx[l_idx].calc(s, self.hparams["gpu"])
         weights = torch.bmm(c.float().permute(2, 0, 1),
                             self.W[l_idx]).permute(1, 0, 2)  # [batch_size, layer_dim, input_dim]
         h_out = torch.bmm(weights,

@@ -1,11 +1,11 @@
 _target_: src.models.dgn_model.DGNModel
 
 input_size: 2
-lin1_size: 100
-lin2_size: 10
+lin1_size: 3
+lin2_size: 1
 lin3_size: 1
 num_classes: 10
-num_branches: 10
+num_branches: 15
 pred_clipping: 0.01
 weight_clipping: 5
 lr: 0.0001

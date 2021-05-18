@@ -34,7 +34,7 @@ class BinaryDGNChain(LightningModule):
             if not torch.all(pretrained[i-1, :] == 0):
                 layer_ctx.hyperplanes[0, :, :] = pretrained[i-1, :]
 
-            layer_W = torch.ones(layer_dim, num_branches, input_dim + 1)
+            layer_W = 0.5 * torch.ones(layer_dim, num_branches, input_dim + 1)
             if self.gpu:
                 self.ctx.append(layer_ctx.cuda())
                 self.W.append(layer_W.cuda())
@@ -110,6 +110,6 @@ class BinaryDGNChain(LightningModule):
         h = self.base_layer(s)
         with torch.no_grad():
             h = self.gated_layer(h, s_bias, y, 0, is_train)
-            h = self.gated_layer(h, s_bias, y, 1, is_train)
-            h = self.gated_layer(h, s_bias, y, 2, is_train)
+            # h = self.gated_layer(h, s_bias, y, 1, is_train)
+            # h = self.gated_layer(h, s_bias, y, 2, is_train)
         return torch.sigmoid(h)

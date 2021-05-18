@@ -13,3 +13,6 @@ weight_decay: 0.0005
 trained_ctx: False
 gpu: false
 svm_context: true
+use_saved_svm: True
+train_val_test_split: [55_000, 5_000, 10_000]
+datamodule: None
