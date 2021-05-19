@@ -3,6 +3,7 @@ from typing import Any, List
 import torch
 from pytorch_lightning import LightningModule
 from pytorch_lightning.metrics.classification import Accuracy
+from src.models.modules.helpers import to_one_vs_all
 
 
 class OVAModel(LightningModule):
@@ -41,29 +42,44 @@ class OVAModel(LightningModule):
         }
 
     def get_models(self, gpu=False):
+        """Implemented by child class: GLNModel, DGNModel, etc.
+
+        Args:
+            gpu (bool, optional): If models should be on GPU. Defaults to False.
+
+        Returns:
+            [BinaryGLN]: List of instances of a binary module (BinaryGLN, ...)
+                         which will each be trained for a binary one-vs-all task
+        """
         return []
 
-    def to_one_vs_all(self, targets):
-        """
-        Input: Torch tensor of target values (categorical labels)
-        Returns: List of Torch tensors containing one-hot targets
-                    for each class (used for one-vs-all models)
-        """
-        ova_targets = torch.zeros((self.num_classes, len(targets)),
-                                  dtype=torch.int, requires_grad=False,
-                                  device=self.device)
-        for i in range(self.num_classes):
-            ova_targets[i, :][targets == i] = 1
-        return ova_targets
-
     def forward(self, x: torch.Tensor, y: torch.Tensor, is_train: bool):
+        """[summary]
+
+        Args:
+            x (torch.Tensor): [description]
+            y (torch.Tensor): [description]
+            is_train (bool): [description]
+
+        Returns:
+            [type]: [description]
+        """
         with torch.no_grad():
-            y_ova = self.to_one_vs_all(y)
-            outputs = [self.models[i](x, y_ova[i], is_train).squeeze()
+            y_ova = to_one_vs_all(y, self.num_classes, self.device)
+            outputs = [self.models[i](x, y_ova[i], is_train)
                        for i in range(self.num_classes)]
-        return torch.stack(outputs).T
+        return torch.stack(outputs).T.squeeze(0)
 
     def step(self, batch: Any, is_train=True):
+        """[summary]
+
+        Args:
+            batch (Any): [description]
+            is_train (bool, optional): [description]. Defaults to True.
+
+        Returns:
+            [type]: [description]
+        """
         with torch.no_grad():
             x, y = batch
             logits = self.forward(x, y, is_train)
@@ -72,6 +88,15 @@ class OVAModel(LightningModule):
         return loss, preds, y
 
     def training_step(self, batch: Any, batch_idx: int):
+        """[summary]
+
+        Args:
+            batch (Any): [description]
+            batch_idx (int): [description]
+
+        Returns:
+            [type]: [description]
+        """
         with torch.no_grad():
             loss, preds, targets = self.step(batch, is_train=True)
             acc = self.train_accuracy(preds, targets)
@@ -86,6 +111,11 @@ class OVAModel(LightningModule):
         return {"loss": loss, "preds": preds, "targets": targets}
 
     def training_epoch_end(self, outputs: List[Any]):
+        """[summary]
+
+        Args:
+            outputs (List[Any]): [description]
+        """
         # log best so far train acc and train loss
         self.metric_hist["train/acc"].append(
             self.trainer.callback_metrics["train/acc"])
@@ -97,6 +127,15 @@ class OVAModel(LightningModule):
                  min(self.metric_hist["train/loss"]), prog_bar=False)
 
     def validation_step(self, batch: Any, batch_idx: int):
+        """[summary]
+
+        Args:
+            batch (Any): [description]
+            batch_idx (int): [description]
+
+        Returns:
+            [type]: [description]
+        """
         with torch.no_grad():
             loss, preds, targets = self.step(batch, is_train=False)
             # log val metrics
@@ -108,6 +147,11 @@ class OVAModel(LightningModule):
         return {"loss": loss, "preds": preds, "targets": targets}
 
     def validation_epoch_end(self, outputs: List[Any]):
+        """[summary]
+
+        Args:
+            outputs (List[Any]): [description]
+        """
         # log best so far val acc and val loss
         self.metric_hist["val/acc"].append(
             self.trainer.callback_metrics["val/acc"])
@@ -119,6 +163,15 @@ class OVAModel(LightningModule):
                  min(self.metric_hist["val/loss"]), prog_bar=False)
 
     def test_step(self, batch: Any, batch_idx: int):
+        """[summary]
+
+        Args:
+            batch (Any): [description]
+            batch_idx (int): [description]
+
+        Returns:
+            [type]: [description]
+        """
         with torch.no_grad():
             loss, preds, targets = self.step(batch, is_train=False)
             # log test metrics

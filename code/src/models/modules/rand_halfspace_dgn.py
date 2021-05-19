@@ -15,10 +15,9 @@ class RandHalfSpaceDGN(LightningModule):
         super().__init__()
         self.register_buffer("hyperplanes", torch.empty(
             layer_size, num_branches, num_features).normal_(mean=0, std=1.0))
-        self.hyperplanes = self.hyperplanes / \
-            torch.linalg.norm(
-                self.hyperplanes[:, :, :-1], axis=(1, 2))[:, None, None]
-        self.hyperplanes[:, :, -1].normal_(mean=0, std=0.05)
+        self.hyperplanes = self.hyperplanes / torch.linalg.norm(
+            self.hyperplanes[:, :, :-1], axis=(1, 2))[:, None, None]
+        self.hyperplanes[:, :, -1].normal_(mean=0, std=0.5)
 
     def calc(self, s, gpu=False):
         """Calculates context indices for half-space gating given side info s
@@ -31,5 +30,14 @@ class RandHalfSpaceDGN(LightningModule):
             [Int * [batch_size, layer_size]]: Context indices for each side info
                                               sample in batch
         """
-        # return (torch.einsum('abc,dc->dba', self.hyperplanes, s) > 0).bool()
-        return (self.hyperplanes.matmul(s.permute(1, 0)).permute(2, 1, 0) > 0).bool()
+        return (torch.einsum('abc,dc->dba', self.hyperplanes, s) > 0).bool()
+        # return (self.hyperplanes.matmul(s.permute(1, 0)).permute(2, 1, 0) > 0).bool()
+
+    def calc_raw(self, X_all):
+        """Calculate raw values for plotting decision boundary
+
+        Args:
+            X_all ([Float * [batch_size, num_features]]): All input samples X
+        """
+        # return self.hyperplanes.matmul(X_all.permute(1, 0)).permute(2, 1, 0)
+        return torch.einsum('abc,dc->dba', self.hyperplanes, X_all)

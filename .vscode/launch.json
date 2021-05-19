@@ -9,42 +9,77 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/code/run.py",
-            "args": ["trainer=debug_trainer", "model=dgn_model_mnist", "logger=tensorboard"]
+            "args": [
+                "trainer=debug_trainer",
+                "model=dgn_model_mnist",
+                "logger=tensorboard"
+            ]
         },
         {
             "name": "Train DGNChain - Debug",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/code/run.py",
-            "args": ["trainer=debug_trainer", "model=dgn_chain_model_mnist", "logger=tensorboard"]
+            "args": [
+                "trainer=debug_trainer",
+                "model=dgn_chain_model_mnist",
+                "logger=tensorboard"
+            ]
         },
         {
             "name": "Train DGN - Debug, Fashion",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/code/run.py",
-            "args": ["trainer=debug_trainer", "model=dgn_model_mnist", "datamodule.fashionmnist=true"]
+            "args": [
+                "trainer=debug_trainer",
+                "model=dgn_model_mnist",
+                "datamodule.fashionmnist=true"
+            ]
         },
         {
-            "name": "Train toy clustering",
+            "name": "Train DGN - Debug, toy clustering",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/code/run.py",
-            "args": ["trainer=debug_trainer", "model=dgn_model_toy_clustering", "datamodule=toy_clustering_datamodule"]
+            "args": [
+                "trainer=debug_trainer",
+                "model=dgn_model_toy_clustering",
+                "datamodule=toy_clustering_datamodule"
+            ]
+        },
+        {
+            "name": "Train DGNChain - Debug, toy clustering",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": [
+                "trainer=debug_trainer",
+                "model=dgn_chain_model_toy_clustering",
+                "datamodule=toy_clustering_datamodule",
+                "logger=tensorboard"
+            ]
         },
         {
             "name": "Train GLN - GPU",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/code/run.py",
-            "args": ["trainer.gpus=1", "model.gpu=true"]
+            "args": [
+                "trainer.gpus=1",
+                "model.gpu=true"
+            ]
         },
         {
             "name": "Train GLN - Debug, GPU",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/code/run.py",
-            "args": ["trainer=debug_trainer", "trainer.gpus=1", "model.gpu=true"]
+            "args": [
+                "trainer=debug_trainer",
+                "trainer.gpus=1",
+                "model.gpu=true"
+            ]
         },
         {
             "name": "Train GLN",
@@ -57,14 +92,18 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/code/run.py",
-            "args": ["trainer=debug_trainer"]
+            "args": [
+                "trainer=debug_trainer"
+            ]
         },
         {
             "name": "Train DGN",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/code/run.py",
-            "args": ["model=dgn_model_mnist"]
+            "args": [
+                "model=dgn_model_mnist"
+            ]
         },
         {
             "type": "python",
