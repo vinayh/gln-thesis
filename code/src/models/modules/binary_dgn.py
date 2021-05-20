@@ -2,6 +2,7 @@ import torch
 import matplotlib.pyplot as plt
 import numpy as np
 from pytorch_lightning import LightningModule
+from matplotlib.animation import FuncAnimation
 
 from src.models.modules.rand_halfspace_dgn import RandHalfSpaceDGN
 
@@ -14,25 +15,27 @@ class BinaryDGN(LightningModule):
         self.W = []
         self.t = 0
         self.ctx_bias = True
-        s_dim = hparams["input_size"]
+        self.s_dim = hparams["input_size"]
         self.num_neurons = (
-            s_dim, hparams["lin1_size"], hparams["lin2_size"], hparams["lin3_size"])
+            self.s_dim, hparams["lin1_size"], hparams["lin2_size"], hparams["lin3_size"])
         self.pred_clip = hparams["pred_clipping"]
         self.num_branches = hparams["num_branches"]
         self.num_layers_used = hparams["num_layers_used"]
         self.binary_class = binary_class
-        # self.X_all = torch.cat(
-        #     [X_all, torch.ones(X_all.shape[0], 1, device=self.device)], dim=1)
         self.X_all = X_all
         self.y_all = y_all
+        # self.X_all = torch.cat(
+        #     [X_all, torch.ones(X_all.shape[0], 1, device=self.device)], dim=1)
+        self.init_params()
+        self.init_plot()
 
+    def init_params(self):
         # Context functions and weights for gated layers
         for i in range(1, len(self.num_neurons)):
             input_dim, layer_dim = self.num_neurons[i-1], self.num_neurons[i]
-            layer_ctx = RandHalfSpaceDGN(s_dim + 1, layer_dim, self.num_branches,
+            layer_ctx = RandHalfSpaceDGN(self.s_dim + 1, layer_dim, self.num_branches,
                                          ctx_bias=self.ctx_bias,
-                                         trained_ctx=hparams["trained_ctx"])
-
+                                         trained_ctx=self.hparams["trained_ctx"])
             # if hparams["svm_context"] and i == 3:
             #     svm1_coef = torch.tensor(
             #         torch.load('../../../../svm1_coef.pt'))
@@ -41,16 +44,42 @@ class BinaryDGN(LightningModule):
             #     layer_ctx.hyperplanes[0, 0, :-1] = svm1_coef[binary_class]
             #     layer_ctx.hyperplanes[0, 0, -1] = svm1_intercept[binary_class]
 
-            layer_W = torch.full((layer_dim, self.num_branches, input_dim+1),
-                                 1.0/input_dim)
-            # layer_W = 0.5 * \
-            #     torch.ones(layer_dim, self.num_branches, input_dim + 1)
+            # layer_W = torch.full((layer_dim, self.num_branches, input_dim+1),
+            #                      1.0/input_dim)
+            layer_W = 0.5 * \
+                torch.zeros(layer_dim, self.num_branches, input_dim + 1)
             if self.hparams["gpu"]:
                 self.ctx.append(layer_ctx.cuda())
                 self.W.append(layer_W.cuda())
             else:
                 self.ctx.append(layer_ctx)
                 self.W.append(layer_W)
+
+    def init_plot(self):
+        # For plotting
+        self.NX, self.NY = 120, 120
+        self.Z_out_all = []
+        self.plot, self.ax = plt.subplots()
+        if self.hparams["plot"]:
+            self.ax.scatter(self.X_all[:, 0], self.X_all[:, 1],
+                            c=self.y_all, cmap='hot', marker='.',
+                            linewidths=0.)
+            self.ax = self.plot.gca()
+            xlim = self.ax.get_xlim()
+            ylim = self.ax.get_ylim()
+            xx = np.linspace(xlim[0], xlim[1], self.NX)  # X is from min to max
+            # Y is from max to min to align
+            yy = np.linspace(ylim[1], ylim[0], self.NY)
+            XX, YY = np.meshgrid(xx, yy)
+            self.xy = np.stack([XX.ravel(), YY.ravel(), np.ones(XX.size)]).T
+            self.xy = torch.tensor(self.xy, dtype=torch.float)
+            # output_shape = [self.num_branches] + list(XX.shape)
+            for l_idx in range(self.num_layers_used):
+                Z = self.ctx[l_idx].calc_raw(self.xy)
+                for b_idx in range(self.num_branches):
+                    Z_b = Z[:, b_idx].reshape(self.NX, self.NY)
+                    self.ax.contour(XX, YY, Z_b, colors='k', levels=[0], alpha=0.5,
+                                    linestyles=['-'])
 
     def lr(self):
         # return min(self.hparams["lr"], (1.1 * self.hparams["lr"])/(1.0 + 1e-2 * self.t))
@@ -62,7 +91,7 @@ class BinaryDGN(LightningModule):
 
         Args:
             h ([Float * [batch_size, input_dim]]): Input activations with logit
-            s ([Float * [batch_size, s_dim]]): Batch of side info samples s
+            s ([Float * [batch_size, self.s_dim]]): Batch of side info samples s
             y ([Float * [batch_size]]): Batch of binary targets
             l_idx (Int): Layer index for selecting ctx and layer weights
             is_train (bool): Whether to train/update on this batch or not
@@ -100,43 +129,26 @@ class BinaryDGN(LightningModule):
         # h = torch.empty_like(s).copy_(s)
         # h = torch.clamp(torch.sigmoid(h), self.pred_clip, 1 - self.pred_clip)
         # h = torch.sigmoid(h)
-        # return 0.5 * torch.ones_like(s_bias[:, :-1])
-        return s_bias[:, :-1]
+        return 0.5 * torch.ones_like(s_bias[:, :-1])
+        # return s_bias[:, :-1]
 
-    def plot(self):
-        """For 2D data (e.g. toy clustering dataset)
-        """
-        plt.scatter(self.X_all[:, 0], self.X_all[:, 1],
-                    c=self.y_all, cmap='Reds')
-        ax = plt.gca()
-        xlim = ax.get_xlim()
-        ylim = ax.get_ylim()
-        NX, NY = 120, 120
-        xx = np.linspace(xlim[0], xlim[1], NX)  # X is from min to max
-        yy = np.linspace(ylim[1], ylim[0], NY)  # Y is from max to min to align
-        XX, YY = np.meshgrid(xx, yy)
-        xy = np.stack([XX.ravel(), YY.ravel(), np.ones(XX.size)]).T
-        xy = torch.tensor(xy, dtype=torch.float)
-        # output_shape = [self.num_branches] + list(XX.shape)
-        for l_idx in range(self.num_layers_used):
-            Z = self.ctx[l_idx].calc_raw(xy)
-            for b_idx in range(self.num_branches):
-                Z_b = Z[:, b_idx].reshape(NX, NY)
-                ax.contour(XX, YY, Z_b, colors='k', levels=[0], alpha=0.5,
-                           linestyles=['-'])
-        if self.hparams["plot_decisions"]:
-            # Should probably use plt.imshow here instead of plt.contourf
-            # for proper continuous color gradients
-            Z_out = self.forward_helper(xy, y=None, is_train=False)
-            # min = Z_out.min()
-            # max = Z_out.max()+0.001
-            # clev = np.linspace(min, max, 100)
-            # ax.contourf(XX, YY, Z_out.reshape(NX, NY), clev, alpha=0.2)
-            ax.imshow(Z_out.reshape(NX, NY),
-                      vmin=Z_out.min(), vmax=Z_out.max(), cmap='viridis',
-                      extent=[XX.min(), XX.max(), YY.min(), YY.max()],
-                      interpolation='none')
-        plt.show()
+    def record_plot_info(self):
+        Z_out = self.forward_helper(self.xy, y=None, is_train=False)
+        self.Z_out_all.append(Z_out.reshape(self.NX, self.NY))
+
+    def update_plot(self, Z_out):
+        xlim = self.ax.get_xlim()
+        ylim = self.ax.get_ylim()
+        self.ax.imshow(Z_out.reshape(self.NX, self.NY),
+                       vmin=Z_out.min(), vmax=Z_out.max(), cmap='viridis',
+                       extent=[xlim[0], xlim[1], ylim[0], ylim[1]],
+                       interpolation='none')
+
+    def save_animation(self, filename):
+        if self.hparams["plot"] and self.binary_class == 0:
+            anim = FuncAnimation(self.plot, self.update_plot,
+                                 frames=self.Z_out_all)
+            anim.save(filename, dpi=80, writer='imagemagick')
 
     def forward_helper(self, s_bias, y, is_train: bool):
         with torch.no_grad():
@@ -149,7 +161,7 @@ class BinaryDGN(LightningModule):
         """Calculate output of DGN for input x and side info s
 
         Args:
-            s ([Float * [batch_size, s_dim]]): Batch of side info samples s
+            s ([Float * [batch_size, self.s_dim]]): Batch of side info samples s
             y ([Float * [batch_size]]): Batch of binary targets
             is_train (bool): Whether to train/update on this batch or not
         Returns:
@@ -161,6 +173,6 @@ class BinaryDGN(LightningModule):
         s_bias = torch.cat(
             [s, torch.ones(s.shape[0], 1, device=self.device)], dim=1)
         h = self.forward_helper(s_bias, y, is_train)
-        if self.hparams["plot"] and not (self.t % 20) and self.binary_class == 1:
-            self.plot()
+        if is_train and self.hparams["plot"] and not (self.t % 5) and self.binary_class == 0:
+            self.record_plot_info()
         return torch.sigmoid(h)

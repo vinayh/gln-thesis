@@ -49,6 +49,17 @@
             ]
         },
         {
+            "name": "Train GLN - Debug, toy clustering",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": [
+                "trainer=debug_trainer",
+                "model=gln_model_toy_clustering",
+                "datamodule=toy_clustering_datamodule"
+            ]
+        },
+        {
             "name": "Train DGNChain - Debug, toy clustering",
             "type": "python",
             "request": "launch",

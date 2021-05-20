@@ -19,7 +19,7 @@ class DGNModel(OVAModel):
         if self.hparams["gpu"]:
             return [BinaryDGN(hparams=self.hparams, binary_class=i,
                               X_all=X_all,
-                              y_all_ova=y_all_ova[i]).cuda()
+                              y_all=y_all_ova[i]).cuda()
                     for i in range(self.num_classes)]
         else:
             return [BinaryDGN(hparams=self.hparams, binary_class=i,

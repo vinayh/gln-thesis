@@ -42,3 +42,9 @@ class RandHalfSpaceGLN(LightningModule):
         else:
             contexts = ctx_results.long().matmul(self.bitwise_map)
         return contexts
+
+    def calc_raw(self, s):
+        ctx_dist = torch.matmul(s.expand(self.n_subctx, s.shape[0], s.shape[1]),
+                                self.ctx_weights)
+        ctx_results = ctx_dist.permute(1, 2, 0)
+        return ctx_results

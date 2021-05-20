@@ -32,9 +32,10 @@ class ToyClusteringDataModule(PretrainDataModule):
         self.pin_memory = pin_memory
 
     def gen_dataset(self, num_samples=50, num_classes=3, dim=2):
-        centroids = 20 * \
-            np.random.rand(num_classes, dim)
-        centroids = centroids - np.mean(centroids, axis=0)
+        np.random.seed(42)
+        centroids = np.random.rand(num_classes, dim)
+        centroids[0] = np.mean(centroids[1:], axis=0)
+        centroids = 20 * (centroids - np.mean(centroids, axis=0))
         data = np.zeros((num_samples, dim+1))
         added = 0
         for i, c in enumerate(centroids):

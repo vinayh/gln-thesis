@@ -181,7 +181,9 @@ class OVAModel(LightningModule):
         return {"loss": loss, "preds": preds, "targets": targets}
 
     def test_epoch_end(self, outputs: List[Any]):
-        pass
+        if self.hparams["plot"]:
+            for i in range(self.num_classes):
+                self.models[i].save_animation('test1.gif')
 
     def configure_optimizers(self):
         pass

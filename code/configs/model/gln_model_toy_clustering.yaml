@@ -1,17 +1,15 @@
-_target_: src.models.dgn_model.DGNModel
+_target_: src.models.gln_model.GLNModel
 
 input_size: 2
 lin1_size: 1
 lin2_size: 1
 lin3_size: 1
 num_classes: 3
-num_branches: 10
-num_layers_used: 1
+num_subcontexts: 4
 pred_clipping: 0.01
 weight_clipping: 5
-lr: 0.01
+lr: 0.001
 weight_decay: 0.0005
-trained_ctx: False
 gpu: false
 svm_context: false
 plot: true
