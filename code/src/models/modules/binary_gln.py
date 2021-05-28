@@ -1,13 +1,13 @@
 import torch
 import matplotlib.pyplot as plt
 
-from torch import nn
 from pytorch_lightning import LightningModule
 from matplotlib.animation import FuncAnimation
 import numpy as np
 
 from src.models.modules.rand_halfspace_gln import RandHalfSpaceGLN
-from src.models.modules.helpers import logit
+from src.utils.helpers import logit
+from src.utils.gated_plotter import GatedPlotter
 
 
 class BinaryGLN(LightningModule):
@@ -23,11 +23,14 @@ class BinaryGLN(LightningModule):
         self.ctx_bias = True
         self.w_clip = hparams["weight_clipping"]
         s_dim = hparams["input_size"]
+        self.num_layers_used = hparams["num_layers_used"]
+        self.num_subctx = hparams["num_subcontexts"]
+        self.num_ctx = 2**self.num_subctx
         self.X_all = X_all
         self.y_all = y_all
         self.binary_class = binary_class
         # Weights for base predictor (arbitrary activations)
-        # self.W_base = nn.Linear(self.l_sizes[0], self.l_sizes[0])
+        # self.W_base = torch.nn.Linear(self.l_sizes[0], self.l_sizes[0])
         # self.W_base.requires_grad_ = False
         # torch.nn.init.normal_(self.W_base.weight.data, mean=0.0, std=0.2)
         # torch.nn.init.normal_(self.W_base.bias.data, mean=0.0, std=0.2)
@@ -38,7 +41,7 @@ class BinaryGLN(LightningModule):
             input_dim, layer_dim = self.l_sizes[i-1], self.l_sizes[i]
             new_ctx = RandHalfSpaceGLN(s_dim + 1, layer_dim, hparams["num_subcontexts"],
                                        ctx_bias=self.ctx_bias)
-            new_W = torch.full((layer_dim, 2**hparams["num_subcontexts"],
+            new_W = torch.full((layer_dim, self.num_ctx,
                                input_dim + 1), 1.0/input_dim)
 
             if self.hparams["gpu"]:
@@ -47,34 +50,15 @@ class BinaryGLN(LightningModule):
             else:
                 self.ctx.append(new_ctx)
                 self.W.append(new_W)
-        self.init_plot()
 
-    def init_plot(self):
-        # For plotting
-        self.NX, self.NY = 120, 120
-        self.Z_out_all = []
-        self.plot, self.ax = plt.subplots()
+        def add_ctx_to_plot(xy, add_to_plot_fn):
+            for l_idx in range(self.num_layers_used):
+                Z = self.ctx[l_idx].calc_raw(xy)[:, 0, :]
+                for b_idx in range(self.num_subctx):
+                    add_to_plot_fn(Z[:, b_idx])
+
         if self.hparams["plot"]:
-            self.ax.scatter(self.X_all[:, 0], self.X_all[:, 1],
-                            c=self.y_all, cmap='hot', marker='.',
-                            linewidths=0.)
-            self.ax = self.plot.gca()
-            xlim = self.ax.get_xlim()
-            ylim = self.ax.get_ylim()
-            xx = np.linspace(xlim[0], xlim[1], self.NX)  # X is from min to max
-            # Y is from max to min to align
-            yy = np.linspace(ylim[1], ylim[0], self.NY)
-            XX, YY = np.meshgrid(xx, yy)
-            self.xy = np.stack([XX.ravel(), YY.ravel(), np.ones(XX.size)]).T
-            self.xy = torch.tensor(self.xy, dtype=torch.float)
-            # output_shape = [self.num_branches] + list(XX.shape)
-            num_layers_used = 1
-            for l_idx in range(num_layers_used):
-                Z = self.ctx[l_idx].calc_raw(self.xy)
-                for b_idx in range(self.hparams["num_subcontexts"]):
-                    Z_b = Z[:, 0, b_idx].reshape(self.NX, self.NY)
-                    self.ax.contour(XX, YY, Z_b, colors='k', levels=[0], alpha=0.5,
-                                    linestyles=['-'])
+            self.plotter = GatedPlotter(X_all, y_all, add_ctx_to_plot)
 
     def lr(self):
         # return 0.1
@@ -133,24 +117,6 @@ class BinaryGLN(LightningModule):
         # x = (s - mean) / (stdev + 1.0)
         return s
 
-    def record_plot_info(self):
-        Z_out = self.forward_helper(self.xy, y=None, is_train=False)
-        self.Z_out_all.append(Z_out.reshape(self.NX, self.NY))
-
-    def update_plot(self, Z_out):
-        xlim = self.ax.get_xlim()
-        ylim = self.ax.get_ylim()
-        self.ax.imshow(Z_out.reshape(self.NX, self.NY),
-                       vmin=Z_out.min(), vmax=Z_out.max(), cmap='viridis',
-                       extent=[xlim[0], xlim[1], ylim[0], ylim[1]],
-                       interpolation='none')
-
-    def save_animation(self, filename):
-        if self.hparams["plot"] and self.binary_class == 0:
-            anim = FuncAnimation(self.plot, self.update_plot,
-                                 frames=self.Z_out_all)
-            anim.save(filename, dpi=80, writer='imagemagick')
-
     def forward_helper(self, s, y, is_train: bool):
         with torch.no_grad():
             x = self.base_layer(s, y, self.l_sizes[0])
@@ -176,6 +142,8 @@ class BinaryGLN(LightningModule):
         if is_train:
             self.t += 1
         x = self.forward_helper(s, y, is_train)
-        if is_train and self.hparams["plot"] and not (self.t % 5) and self.binary_class == 0:
-            self.record_plot_info()
+        if is_train and self.hparams["plot"]:
+            if self.binary_class == 0 and not (self.t % 5):
+                self.plotter.save_data(
+                    lambda xy: self.forward_helper(xy, y=None, is_train=False))
         return torch.sigmoid(x)

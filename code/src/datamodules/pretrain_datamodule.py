@@ -16,7 +16,7 @@ from os.path import join
 
 import numpy as np
 
-from src.models.modules.helpers import to_one_vs_all
+from src.utils.helpers import to_one_vs_all
 
 
 class PretrainDataModule(LightningDataModule):

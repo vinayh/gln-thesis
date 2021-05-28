@@ -3,7 +3,7 @@ from typing import Any, List
 import torch
 from pytorch_lightning import LightningModule
 from pytorch_lightning.metrics.classification import Accuracy
-from src.models.modules.helpers import to_one_vs_all
+from src.utils.helpers import to_one_vs_all
 
 
 class OVAModel(LightningModule):
@@ -182,8 +182,9 @@ class OVAModel(LightningModule):
 
     def test_epoch_end(self, outputs: List[Any]):
         if self.hparams["plot"]:
-            for i in range(self.num_classes):
-                self.models[i].save_animation('test1.gif')
+            # for i in range(self.num_classes):
+            for i in range(1):  # TODO: Currently only if class == 0
+                self.models[i].plotter.save_animation('class_{}.gif'.format(i))
 
     def configure_optimizers(self):
         pass

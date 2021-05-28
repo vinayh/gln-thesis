@@ -15,12 +15,12 @@ class RandHalfSpaceGLN(LightningModule):
         """
         super().__init__()
         self.ctx_bias = ctx_bias
-        self.n_subctx = num_subcontexts
+        self.num_subctx = num_subcontexts
         self.layer_size = layer_size
         self.register_buffer("bitwise_map", torch.tensor(
-            [2**i for i in range(self.n_subctx)]))
+            [2**i for i in range(self.num_subctx)]))
         self.register_buffer("ctx_weights", torch.empty(
-            num_subcontexts, s_dim, layer_size).normal_(mean=0.5, std=1.0))
+            self.num_subctx, s_dim, layer_size).normal_(mean=0.5, std=1.0))
 
     def calc(self, s, gpu=False):
         """Calculates context indices for half-space gating given side info s
@@ -30,21 +30,26 @@ class RandHalfSpaceGLN(LightningModule):
             gpu (bool): Indicates whether model is running on GPU
 
         Returns:
-            [Int * [batch_size, layer_size]]: Context indices for each side info
-                                              sample in batch
+            [Int * [batch_size, layer_size]]: Context indices for each side
+                                              info sample in batch
         """
         # ctx_results = (torch.einsum('abc,db->dca', self.ctx_weights, s) > 0)
-        ctx_dist = torch.matmul(s.expand(self.n_subctx, s.shape[0], s.shape[1]),
+        ctx_dist = torch.matmul(s.expand(self.num_subctx,
+                                         s.shape[0],
+                                         s.shape[1]),
                                 self.ctx_weights)
         ctx_results = (ctx_dist > 0).permute(1, 2, 0)
         if gpu:
-            contexts = ctx_results.float().matmul(self.bitwise_map.float()).long()
+            contexts = ctx_results.float().matmul(self.bitwise_map.float()
+                                                  ).long()
         else:
             contexts = ctx_results.long().matmul(self.bitwise_map)
         return contexts
 
     def calc_raw(self, s):
-        ctx_dist = torch.matmul(s.expand(self.n_subctx, s.shape[0], s.shape[1]),
+        ctx_dist = torch.matmul(s.expand(self.num_subctx,
+                                         s.shape[0],
+                                         s.shape[1]),
                                 self.ctx_weights)
         ctx_results = ctx_dist.permute(1, 2, 0)
         return ctx_results

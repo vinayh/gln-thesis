@@ -8,6 +8,7 @@ num_classes: 3
 num_subcontexts: 4
 pred_clipping: 0.01
 weight_clipping: 5
+num_layers_used: 1
 lr: 0.001
 weight_decay: 0.0005
 gpu: false

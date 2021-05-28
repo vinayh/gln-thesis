@@ -1,6 +1,6 @@
 from src.models.ova_model import OVAModel
 from src.models.modules.binary_gln import BinaryGLN
-from src.models.modules.helpers import to_one_vs_all
+from src.utils.helpers import to_one_vs_all
 
 
 class GLNModel(OVAModel):
