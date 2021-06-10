@@ -6,8 +6,11 @@ lin2_size: 5
 lin3_size: 1
 num_classes: 10
 num_subcontexts: 4
+num_layers_used: 1
 pred_clipping: 0.01
 weight_clipping: 5
 lr: 0.001
 weight_decay: 0.0005
 gpu: false
+svm_context: false
+plot: false

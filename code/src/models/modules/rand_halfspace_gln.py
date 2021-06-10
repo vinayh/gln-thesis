@@ -33,23 +33,26 @@ class RandHalfSpaceGLN(LightningModule):
             [Int * [batch_size, layer_size]]: Context indices for each side
                                               info sample in batch
         """
-        # ctx_results = (torch.einsum('abc,db->dca', self.ctx_weights, s) > 0)
-        ctx_dist = torch.matmul(s.expand(self.num_subctx,
-                                         s.shape[0],
-                                         s.shape[1]),
-                                self.ctx_weights)
-        ctx_results = (ctx_dist > 0).permute(1, 2, 0)
         if gpu:
-            contexts = ctx_results.float().matmul(self.bitwise_map.float()
-                                                  ).long()
+            return self.calc_raw(s).float().matmul(
+                self.bitwise_map.float()).long()
         else:
-            contexts = ctx_results.long().matmul(self.bitwise_map)
-        return contexts
+            self.calc_raw(s).long().matmul(self.bitwise_map)
 
     def calc_raw(self, s):
+        """Calculates subcontext distances for half-space gating given side info s
+
+        Args:
+            s ([Float * [batch_size, s_dim]]): Batch of side info samples s
+
+        Returns:
+            [Int * [batch_size, layer_size]]: Context indices for each side
+                                              info sample in batch
+        """
         ctx_dist = torch.matmul(s.expand(self.num_subctx,
                                          s.shape[0],
                                          s.shape[1]),
                                 self.ctx_weights)
         ctx_results = ctx_dist.permute(1, 2, 0)
+        # ctx_results = (torch.einsum('abc,db->dca', self.ctx_weights, s) > 0)
         return ctx_results

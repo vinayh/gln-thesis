@@ -1,4 +1,5 @@
 import torch
+from math import e
 from pytorch_lightning import LightningModule
 
 from src.models.modules.rand_halfspace_dgn import RandHalfSpaceDGN
@@ -77,8 +78,10 @@ class BinaryDGN(LightningModule):
             [Float * [batch_size, layer_dim]]: Output of DGN layer
         """
         layer_dim, _, input_dim = self.W[l_idx].shape
+        layer_bias = e / (e+1)
         h = torch.cat(
-            [torch.ones(h.shape[0], 1, device=self.device), h], dim=1)
+            [h, layer_bias * torch.ones(h.shape[0], 1, device=self.device)],
+            dim=1)
         assert(input_dim == h.shape[1])
         # c: [batch_size, layer_dim]
         c = self.ctx[l_idx].calc(s, self.hparams["gpu"])

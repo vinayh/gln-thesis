@@ -1,4 +1,5 @@
 import torch
+from math import e
 import matplotlib.pyplot as plt
 
 from pytorch_lightning import LightningModule
@@ -79,18 +80,22 @@ class BinaryGLN(LightningModule):
         """
         batch_size = s.shape[0]
         layer_dim, _, input_dim = self.W[l_idx].shape
-        # [batch_size, input_dim]
+        # c: [batch_size, input_dim]
         c = self.ctx[l_idx].calc(s, self.hparams["gpu"])
-        logit_x = torch.cat([logit_x, torch.ones(
-            logit_x.shape[0], 1, device=self.device)], dim=1)
-        w_ctx = torch.stack([self.W[l_idx][range(layer_dim), c[j], :] for j in range(
-            batch_size)])  # [batch_size, input_dim, output_layer_dim]
+        layer_bias = e / (e+1)
+        logit_x = torch.cat([logit_x,
+                             layer_bias * torch.ones(
+                                 logit_x.shape[0], 1, device=self.device)],
+                            dim=1)
+        # w_ctx: [batch_size, input_dim, output_layer_dim]
+        w_ctx = torch.stack([self.W[l_idx][range(layer_dim), c[j], :]
+                             for j in range(batch_size)])
         logit_out = torch.bmm(w_ctx, logit_x.unsqueeze(2)).flatten(
             start_dim=1)  # [batch_size, output_layer_dim]
         if is_train:
-            # [batch_size, output_layer_dim]
+            # loss: [batch_size, output_layer_dim]
             loss = torch.sigmoid(logit_out) - y.unsqueeze(1)
-            # w_delta = torch.einsum('ab,ac->acb', loss, logit_x)  # [batch_size, input_dim, output_layer_dim]
+            # w_delta: torch.einsum('ab,ac->acb', loss, logit_x)  # [batch_size, input_dim, output_layer_dim]
             w_delta = torch.bmm(loss.unsqueeze(2), logit_x.unsqueeze(1))
             w_new = torch.clamp(w_ctx - self.lr() * w_delta,
                                 min=-self.w_clip, max=self.w_clip)
@@ -111,21 +116,19 @@ class BinaryGLN(LightningModule):
         x = logit(x)
         return torch.ones(batch_size, layer_size, device=self.device)/2.0
 
-    def base_layer(self, s, y, layer_size):
+    def base_layer(self, s_bias, y, layer_size):
         # mean = torch.mean(s, dim=0)
         # stdev = torch.std(s, dim=0)
         # x = (s - mean) / (stdev + 1.0)
-        return s
+        return s_bias[:, :-1]
 
-    def forward_helper(self, s, y, is_train: bool):
+    def forward_helper(self, s_bias, y, is_train: bool):
         with torch.no_grad():
-            x = self.base_layer(s, y, self.l_sizes[0])
-            s = torch.cat(
-                [s, torch.ones(s.shape[0], 1, device=self.device)], dim=1)
+            x = self.base_layer(s_bias, y, self.l_sizes[0])
             # Gated layers
-            x = self.gated_layer(x, s, y, 0, is_train)
-            # x = self.gated_layer(x, s, y, 1, is_train)
-            # x = self.gated_layer(x, s, y, 2, is_train)
+            x = self.gated_layer(x, s_bias, y, 0, is_train)
+            # x = self.gated_layer(x, s_bias, y, 1, is_train)
+            # x = self.gated_layer(x, s_bias, y, 2, is_train)
         return x
 
     def forward(self, s, y, is_train: bool):
@@ -138,10 +141,12 @@ class BinaryGLN(LightningModule):
         Returns:
             [Float * [batch_size]]: Batch of GLN outputs (0 < probability < 1)
         """
-        s = s.flatten(start_dim=1)
         if is_train:
             self.t += 1
-        x = self.forward_helper(s, y, is_train)
+        s = s.flatten(start_dim=1)
+        s_bias = torch.cat(
+            [s, torch.ones(s.shape[0], 1, device=self.device)], dim=1)
+        x = self.forward_helper(s_bias, y, is_train)
         if is_train and self.hparams["plot"]:
             if self.binary_class == 0 and not (self.t % 5):
                 self.plotter.save_data(
