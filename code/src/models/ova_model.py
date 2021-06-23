@@ -24,12 +24,13 @@ class OVAModel(LightningModule):
     ):
         super().__init__()
 
-        self.automatic_optimization = False
+        self.automatic_optimization = True
         self.save_hyperparameters()
         self.num_classes = self.hparams["num_classes"]
-        self.criterion = torch.nn.NLLLoss()
+        self.criterion = torch.nn.CrossEntropyLoss()
         self.models = self.get_models(self.hparams["gpu"])
-
+        # Example input array for TensorBoard logger
+        # self.example_input_array = self.get_example_input()
         self.train_accuracy = Accuracy()
         self.val_accuracy = Accuracy()
         self.test_accuracy = Accuracy()
@@ -40,6 +41,15 @@ class OVAModel(LightningModule):
             "train/loss": [],
             "val/loss": [],
         }
+
+    def get_example_input(self):
+        ex_batch_size = 4
+        ex_x = torch.rand(
+            (ex_batch_size, self.hparams["input_size"]), device=self.device)
+        ex_y = torch.zeros(self.hparams["num_classes"], device=self.device)
+        ex_y[0] = 1
+        ex_is_train = torch.tensor(True)
+        return [ex_x, ex_y, ex_is_train]
 
     def get_models(self, gpu=False):
         """Implemented by child class: GLNModel, DGNModel, etc.
@@ -64,10 +74,10 @@ class OVAModel(LightningModule):
         Returns:
             [type]: [description]
         """
-        with torch.no_grad():
-            y_ova = to_one_vs_all(y, self.num_classes, self.device)
-            outputs = [self.models[i](x, y_ova[i], is_train)
-                       for i in range(self.num_classes)]
+        # with torch.no_grad():
+        y_ova = to_one_vs_all(y, self.num_classes, self.device)
+        outputs = [self.models[i](x, y_ova[i], is_train)
+                   for i in range(self.num_classes)]
         return torch.stack(outputs).T.squeeze(0)
 
     def step(self, batch: Any, is_train=True):
@@ -80,14 +90,14 @@ class OVAModel(LightningModule):
         Returns:
             [type]: [description]
         """
-        with torch.no_grad():
-            x, y = batch
-            logits = self.forward(x, y, is_train)
-            loss = self.criterion(logits, y)
-            preds = torch.argmax(logits, dim=1)
+        # with torch.no_grad():
+        x, y = batch
+        logits = self.forward(x, y, is_train)
+        loss = self.criterion(logits, y)
+        preds = torch.argmax(logits, dim=1)
         return loss, preds, y
 
-    def training_step(self, batch: Any, batch_idx: int):
+    def training_step(self, batch: Any, batch_idx: int, optimizer_idx: int):
         """[summary]
 
         Args:
@@ -97,18 +107,20 @@ class OVAModel(LightningModule):
         Returns:
             [type]: [description]
         """
-        with torch.no_grad():
-            loss, preds, targets = self.step(batch, is_train=True)
-            acc = self.train_accuracy(preds, targets)
-            self.log("train/loss", loss, on_step=False,
-                     on_epoch=True, prog_bar=False)
-            self.log("train/acc", acc, on_step=False,
-                     on_epoch=True, prog_bar=True)
-            self.log("lr", self.models[0].lr(),
-                     on_step=True, on_epoch=True, prog_bar=True)
+        # with torch.no_grad():
+        loss, preds, targets = self.step(batch, is_train=True)
+        acc = self.train_accuracy(preds, targets)
+        self.log("train/loss", loss, on_step=False,
+                 on_epoch=True, prog_bar=False)
+        self.log("train/acc", acc, on_step=False,
+                 on_epoch=True, prog_bar=True)
+        self.log("lr", self.models[0].lr(),
+                 on_step=True, on_epoch=True, prog_bar=True)
         # we can return here dict with any tensors
         # and then read it in some callback or in training_epoch_end() below
-        return {"loss": loss, "preds": preds, "targets": targets}
+
+        # return {"loss": loss, "preds": preds, "targets": targets}
+        return {"loss": loss}
 
     def training_epoch_end(self, outputs: List[Any]):
         """[summary]
@@ -136,15 +148,17 @@ class OVAModel(LightningModule):
         Returns:
             [type]: [description]
         """
-        with torch.no_grad():
-            loss, preds, targets = self.step(batch, is_train=False)
-            # log val metrics
-            acc = self.val_accuracy(preds, targets)
-            self.log("val/loss", loss, on_step=False,
-                     on_epoch=True, prog_bar=False)
-            self.log("val/acc", acc, on_step=False,
-                     on_epoch=True, prog_bar=True)
-        return {"loss": loss, "preds": preds, "targets": targets}
+        # with torch.no_grad():
+        loss, preds, targets = self.step(batch, is_train=False)
+        # log val metrics
+        acc = self.val_accuracy(preds, targets)
+        self.log("val/loss", loss, on_step=False,
+                 on_epoch=True, prog_bar=False)
+        self.log("val/acc", acc, on_step=False,
+                 on_epoch=True, prog_bar=True)
+
+        # return {"loss": loss, "preds": preds, "targets": targets}
+        return {"loss": loss}
 
     def validation_epoch_end(self, outputs: List[Any]):
         """[summary]
@@ -172,13 +186,15 @@ class OVAModel(LightningModule):
         Returns:
             [type]: [description]
         """
-        with torch.no_grad():
-            loss, preds, targets = self.step(batch, is_train=False)
-            # log test metrics
-            acc = self.test_accuracy(preds, targets)
-            self.log("test/loss", loss, on_step=False, on_epoch=True)
-            self.log("test/acc", acc, on_step=False, on_epoch=True)
-        return {"loss": loss, "preds": preds, "targets": targets}
+        # with torch.no_grad():
+        loss, preds, targets = self.step(batch, is_train=False)
+        # log test metrics
+        acc = self.test_accuracy(preds, targets)
+        self.log("test/loss", loss, on_step=False, on_epoch=True)
+        self.log("test/acc", acc, on_step=False, on_epoch=True)
+
+        # return {"loss": loss, "preds": preds, "targets": targets}
+        return {"loss": loss}
 
     def test_epoch_end(self, outputs: List[Any]):
         if self.hparams["plot"]:
@@ -187,4 +203,9 @@ class OVAModel(LightningModule):
                 self.models[i].plotter.save_animation('class_{}.gif'.format(i))
 
     def configure_optimizers(self):
+        """Choose what optimizers and learning-rate schedulers to use in your optimization.
+        Normally you'd need one. But in the case of GANs or similar you might have multiple.
+        See examples here:
+            https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#configure-optimizers
+        """
         pass

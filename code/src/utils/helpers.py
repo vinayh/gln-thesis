@@ -30,8 +30,40 @@ def to_one_vs_all(targets, num_classes, device='cpu'):
         [type]: [description]
     """
     ova_targets = torch.zeros((num_classes, len(targets)),
-                              dtype=torch.int, requires_grad=False,
+                              dtype=torch.int,
                               device=device)
     for i in range(num_classes):
         ova_targets[i, :][targets == i] = 1
     return ova_targets
+
+
+class STEFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input):
+        return (input > 0).bool()
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return torch.nn.functional.hardtanh(grad_output)
+
+
+class StraightThroughEstimator(torch.nn.Module):
+    def __init__(self):
+        super(StraightThroughEstimator, self).__init__()
+
+    def forward(self, x):
+        x = STEFunction.apply(x)
+        return x
+
+
+class Binary(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input):
+        return torch.sign(input)  # this outputs 1 or -1
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output
+
+
+# 0.5*(Binary.apply(x) + 1)

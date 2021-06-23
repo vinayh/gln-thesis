@@ -9,6 +9,7 @@ from src.utils.gated_plotter import GatedPlotter
 class BinaryDGN(LightningModule):
     def __init__(self, hparams: dict, binary_class: int, X_all=None, y_all=None):
         super().__init__()
+        # with torch.no_grad():
         self.hparams = hparams
         self.ctx = []
         self.W = []
@@ -23,6 +24,7 @@ class BinaryDGN(LightningModule):
         self.binary_class = binary_class
         # self.X_all = torch.cat(
         #     [X_all, torch.ones(X_all.shape[0], 1, device=self.device)], dim=1)
+
         self.init_params()
 
         def add_ctx_to_plot(xy, add_to_plot_fn):
@@ -77,10 +79,12 @@ class BinaryDGN(LightningModule):
         Returns:
             [Float * [batch_size, layer_dim]]: Output of DGN layer
         """
+        # with torch.no_grad():
         layer_dim, _, input_dim = self.W[l_idx].shape
         layer_bias = e / (e+1)
         h = torch.cat(
-            [h, layer_bias * torch.ones(h.shape[0], 1, device=self.device)],
+            [h, layer_bias *
+                torch.ones(h.shape[0], 1, device=self.device)],
             dim=1)
         assert(input_dim == h.shape[1])
         # c: [batch_size, layer_dim]
@@ -90,23 +94,27 @@ class BinaryDGN(LightningModule):
                             self.W[l_idx]).permute(1, 0, 2)
         # h_out: [batch_size, layer_dim]
         h_out = torch.bmm(weights, h.unsqueeze(2)).squeeze(2)
-        if is_train:
-            t = y.unsqueeze(1)
-            r_out = torch.sigmoid(h_out)
-            r_out_clipped = torch.clamp(r_out,
-                                        min=self.pred_clip,
-                                        max=1-self.pred_clip)
-            # learn_gates: [batch_size, layer_dim]
-            learn_gates = (torch.abs(t - r_out) > self.pred_clip).float()
-            w_grad1 = (r_out_clipped - t) * learn_gates
-            w_grad2 = torch.bmm(w_grad1.unsqueeze(2), h.unsqueeze(1))
-            w_delta = torch.bmm(c.float().permute(2, 1, 0),
-                                w_grad2.permute(1, 0, 2))
-            # assert(w_delta.shape == self.W[l_idx].shape)
-            self.W[l_idx] -= self.lr() * w_delta
+        # if is_train:
+        #     t = y.unsqueeze(1)
+        #     r_out = torch.sigmoid(h_out)
+        #     r_out_clipped = torch.clamp(r_out,
+        #                                 min=self.pred_clip,
+        #                                 max=1-self.pred_clip)
+        #     # learn_gates: [batch_size, layer_dim]
+        #     learn_gates = (torch.abs(t - r_out) > self.pred_clip).float()
+        #     w_grad1 = (r_out_clipped - t) * learn_gates
+        #     w_grad2 = torch.bmm(w_grad1.unsqueeze(2), h.unsqueeze(1))
+        #     w_delta = torch.bmm(c.float().permute(2, 1, 0),
+        #                         w_grad2.permute(1, 0, 2))
+        #     # assert(w_delta.shape == self.W[l_idx].shape)
+        #     # TODO delete this: self.W.grad = w_delta
+        #     # optimizer[].step(0)
+
+        #     self.W[l_idx] -= self.lr() * w_delta
         return h_out
 
     def base_layer(self, s_bias):
+        # with torch.no_grad():
         # h = torch.empty_like(s).copy_(s)
         # h = torch.clamp(torch.sigmoid(h), self.pred_clip, 1 - self.pred_clip)
         # h = torch.sigmoid(h)
@@ -114,10 +122,10 @@ class BinaryDGN(LightningModule):
         return s_bias[:, :-1]
 
     def forward_helper(self, s_bias, y, is_train: bool):
-        with torch.no_grad():
-            h = self.base_layer(s_bias)
-            for l_idx in range(self.num_layers_used):
-                h = self.gated_layer(h, s_bias, y, l_idx, is_train)
+        # with torch.no_grad():
+        h = self.base_layer(s_bias)
+        for l_idx in range(self.num_layers_used):
+            h = self.gated_layer(h, s_bias, y, l_idx, is_train)
         return h
 
     def forward(self, s, y, is_train: bool):
@@ -132,12 +140,24 @@ class BinaryDGN(LightningModule):
         """
         if is_train:
             self.t += 1
-        s = s.flatten(start_dim=1)
+        if len(s.shape) > 1:
+            s = s.flatten(start_dim=1)
         s_bias = torch.cat(
             [s, torch.ones(s.shape[0], 1, device=self.device)], dim=1)
         h = self.forward_helper(s_bias, y, is_train)
         if is_train and self.hparams["plot"]:
             if self.binary_class == 0 and not (self.t % 5):
-                self.plotter.save_data(
-                    lambda xy: self.forward_helper(xy, y=None, is_train=False))
+                #
+                print('\ntemp\n', self.ctx[2].hyperplanes[0])
+                #
+
+                def forward_fn(xy): return self.forward_helper(
+                    xy, y=None, is_train=False)
+
+                def add_ctx_to_plot(xy, add_to_plot_fn):
+                    for l_idx in range(self.num_layers_used):
+                        Z = self.ctx[l_idx].calc_raw(xy)
+                        for b_idx in range(self.num_branches):
+                            add_to_plot_fn(Z[:, b_idx])
+                self.plotter.save_data(forward_fn, add_ctx_to_plot)
         return torch.sigmoid(h)

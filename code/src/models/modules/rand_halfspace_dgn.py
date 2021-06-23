@@ -1,6 +1,8 @@
 import torch
-from torch import nn
 from pytorch_lightning import LightningModule
+
+from src.utils.helpers import STEFunction
+from src.utils.helpers import Binary
 
 
 class RandHalfSpaceDGN(LightningModule):
@@ -15,9 +17,14 @@ class RandHalfSpaceDGN(LightningModule):
         super().__init__()
         self.register_buffer("hyperplanes", torch.empty(
             layer_size, num_branches, num_features).normal_(mean=0, std=1.0))
+        # self.hyperplanes == torch.nn.parameters([layer_size, num_branches,
+        #                                num_features])
         self.hyperplanes = self.hyperplanes / torch.linalg.norm(
             self.hyperplanes[:, :, :-1], axis=(1, 2))[:, None, None]
         self.hyperplanes[:, :, -1].normal_(mean=0, std=0.5)
+        self.hyperplanes.requires_grad = True
+        self.hyperplanes = torch.nn.Parameter(self.hyperplanes,
+                                              requires_grad=True)
 
     def calc(self, s, gpu=False):
         """Calculates context indices for half-space gating given side info s
@@ -30,7 +37,9 @@ class RandHalfSpaceDGN(LightningModule):
             [Int * [batch_size, layer_size]]: Context indices for each side info
                                               sample in batch
         """
-        return (torch.einsum('abc,dc->dba', self.hyperplanes, s) > 0).bool()
+        ste = Binary.apply  # Straight-through estimator function
+        return 0.5*(ste(torch.einsum('abc,dc->dba', self.hyperplanes, s))+1)
+        # return (torch.einsum('abc,dc->dba', self.hyperplanes, s) > 0).bool()
         # return (self.hyperplanes.matmul(s.permute(1, 0)).permute(2, 1, 0) > 0).bool()
 
     def calc_raw(self, X_all):

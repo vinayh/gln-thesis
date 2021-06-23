@@ -45,7 +45,8 @@
             "args": [
                 "trainer=debug_trainer",
                 "model=dgn_model_toy_clustering",
-                "datamodule=toy_clustering_datamodule"
+                "datamodule=toy_clustering_datamodule",
+                "logger=tensorboard"
             ]
         },
         {

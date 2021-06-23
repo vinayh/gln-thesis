@@ -1,3 +1,5 @@
+import torch
+
 from src.models.ova_model import OVAModel
 from src.models.modules.binary_dgn import BinaryDGN
 from src.utils.helpers import to_one_vs_all
@@ -30,3 +32,22 @@ class DGNModel(OVAModel):
                               X_all=X_all,
                               y_all=y_all_ova[i])
                     for i in range(self.num_classes)]
+
+    def configure_optimizers(self):
+        """Choose what optimizers and learning-rate schedulers to use in your optimization.
+        Normally you'd need one. But in the case of GANs or similar you might have multiple.
+        See examples here:
+            https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#configure-optimizers
+        """
+        all_optimizers = []
+        if self.hparams["train_context"]:
+            # lr = 0.01
+            def optim(p): return torch.optim.Adam(params=p, lr=1.0)
+
+            for i in range(self.num_classes):  # For each binary model
+                all_params_for_submodel = []
+                for j in range(len(self.models[i].ctx)):  # For each subcontext
+                    all_params_for_submodel.append(
+                        self.models[i].ctx[j].hyperplanes)
+                all_optimizers.append(optim(all_params_for_submodel))
+        return all_optimizers
