@@ -4,6 +4,8 @@ from src.models.ova_model import OVAModel
 from src.models.modules.binary_dgn import BinaryDGN
 from src.utils.helpers import to_one_vs_all
 
+# TODO: Use training_step/forward/etc. of binary_dgn
+
 
 class DGNModel(OVAModel):
     def __init__(*args, **kwargs):
@@ -39,15 +41,17 @@ class DGNModel(OVAModel):
         See examples here:
             https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#configure-optimizers
         """
-        all_optimizers = []
-        if self.hparams["train_context"]:
-            # lr = 0.01
-            def optim(p): return torch.optim.Adam(params=p, lr=1.0)
+        # all_optimizers = []
+        # if self.hparams["train_context"]:
+        #     # lr = 0.01
+        #     def optim(p): return torch.optim.Adam(params=p, lr=1.0)
 
-            for i in range(self.num_classes):  # For each binary model
-                all_params_for_submodel = []
-                for j in range(len(self.models[i].ctx)):  # For each subcontext
-                    all_params_for_submodel.append(
-                        self.models[i].ctx[j].hyperplanes)
-                all_optimizers.append(optim(all_params_for_submodel))
-        return all_optimizers
+        #     for i in range(self.num_classes):  # For each binary model
+        #         all_params_for_submodel = []
+        #         for j in range(len(self.models[i].ctx)):  # For each subcontext
+        #             all_params_for_submodel.append(
+        #                 self.models[i].ctx[j].hyperplanes)
+        #         all_optimizers.append(optim(all_params_for_submodel))
+        #         print(list(self.models[i].parameters()))
+        # return all_optimizers
+        pass

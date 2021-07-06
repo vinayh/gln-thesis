@@ -5,6 +5,8 @@ from pytorch_lightning import LightningModule
 from pytorch_lightning.metrics.classification import Accuracy
 from src.utils.helpers import to_one_vs_all
 
+# from torchviz import make_dot
+
 
 class OVAModel(LightningModule):
     """
@@ -24,13 +26,13 @@ class OVAModel(LightningModule):
     ):
         super().__init__()
 
-        self.automatic_optimization = True
+        self.automatic_optimization = False
         self.save_hyperparameters()
         self.num_classes = self.hparams["num_classes"]
         self.criterion = torch.nn.CrossEntropyLoss()
         self.models = self.get_models(self.hparams["gpu"])
+        self.added_graph = False
         # Example input array for TensorBoard logger
-        # self.example_input_array = self.get_example_input()
         self.train_accuracy = Accuracy()
         self.val_accuracy = Accuracy()
         self.test_accuracy = Accuracy()
@@ -42,14 +44,14 @@ class OVAModel(LightningModule):
             "val/loss": [],
         }
 
-    def get_example_input(self):
-        ex_batch_size = 4
-        ex_x = torch.rand(
-            (ex_batch_size, self.hparams["input_size"]), device=self.device)
-        ex_y = torch.zeros(self.hparams["num_classes"], device=self.device)
-        ex_y[0] = 1
-        ex_is_train = torch.tensor(True)
-        return [ex_x, ex_y, ex_is_train]
+    # def get_example_input(self):
+    #     ex_batch_size = 4
+    #     ex_x = torch.rand(
+    #         (ex_batch_size, self.hparams["input_size"]), device=self.device)
+    #     ex_y = torch.zeros(self.hparams["num_classes"], device=self.device)
+    #     ex_y[0] = 1
+    #     ex_is_train = torch.tensor(True)
+    #     return [ex_x, ex_y, ex_is_train]
 
     def get_models(self, gpu=False):
         """Implemented by child class: GLNModel, DGNModel, etc.
@@ -76,7 +78,7 @@ class OVAModel(LightningModule):
         """
         # with torch.no_grad():
         y_ova = to_one_vs_all(y, self.num_classes, self.device)
-        outputs = [self.models[i](x, y_ova[i], is_train)
+        outputs = [self.models[i].forward(x, y_ova[i], is_train)
                    for i in range(self.num_classes)]
         return torch.stack(outputs).T.squeeze(0)
 
@@ -95,9 +97,16 @@ class OVAModel(LightningModule):
         logits = self.forward(x, y, is_train)
         loss = self.criterion(logits, y)
         preds = torch.argmax(logits, dim=1)
+        if not self.added_graph:
+            ex_inputs = (x, y, torch.tensor(False))
+            self.logger.experiment[0].add_graph(
+                self.models[0], input_to_model=ex_inputs, verbose=False)
+            # make_dot(self.models[0](*ex_inputs)).render(
+            #     "attached", format="png")
+            self.added_graph = True
         return loss, preds, y
 
-    def training_step(self, batch: Any, batch_idx: int, optimizer_idx: int):
+    def training_step(self, batch: Any, batch_idx: int):
         """[summary]
 
         Args:

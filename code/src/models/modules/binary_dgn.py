@@ -10,11 +10,12 @@ class BinaryDGN(LightningModule):
     def __init__(self, hparams: dict, binary_class: int, X_all=None, y_all=None):
         super().__init__()
         # with torch.no_grad():
+        self.automatic_optimization = False
         self.hparams = hparams
-        self.ctx = []
+        self.ctx_params = []
         self.W = []
         self.t = 0
-        self.ctx_bias = True
+        self.ctx_params_bias = True
         self.s_dim = hparams["input_size"]
         self.num_neurons = (
             self.s_dim, hparams["lin1_size"], hparams["lin2_size"], hparams["lin3_size"])
@@ -29,7 +30,7 @@ class BinaryDGN(LightningModule):
 
         def add_ctx_to_plot(xy, add_to_plot_fn):
             for l_idx in range(self.num_layers_used):
-                Z = self.ctx[l_idx].calc_raw(xy)
+                Z = RandHalfSpaceDGN.calc_raw(xy, self.ctx_params[l_idx])
                 for b_idx in range(self.num_branches):
                     add_to_plot_fn(Z[:, b_idx])
 
@@ -40,26 +41,27 @@ class BinaryDGN(LightningModule):
         # Context functions and weights for gated layers
         for i in range(1, len(self.num_neurons)):
             input_dim, layer_dim = self.num_neurons[i-1], self.num_neurons[i]
-            layer_ctx = RandHalfSpaceDGN(self.s_dim + 1, layer_dim, self.num_branches,
-                                         ctx_bias=self.ctx_bias,
-                                         trained_ctx=self.hparams["trained_ctx"])
+            layer_ctx_params = RandHalfSpaceDGN.get_params(self.s_dim + 1, layer_dim,
+                                                           self.num_branches,
+                                                           ctx_bias=self.ctx_params_bias,
+                                                           pretrained_ctx=self.hparams["pretrained_ctx"])
             # if hparams["svm_context"] and i == 3:
             #     svm1_coef = torch.tensor(
             #         torch.load('../../../../svm1_coef.pt'))
             #     svm1_intercept = torch.tensor(
             #         torch.load('../../../../svm1_intercept.pt'))
-            #     layer_ctx.hyperplanes[0, 0, :-1] = svm1_coef[binary_class]
-            #     layer_ctx.hyperplanes[0, 0, -1] = svm1_intercept[binary_class]
+            #     layer_ctx_params.hyperplanes[0, 0, :-1] = svm1_coef[binary_class]
+            #     layer_ctx_params.hyperplanes[0, 0, -1] = svm1_intercept[binary_class]
 
             # layer_W = torch.full((layer_dim, self.num_branches, input_dim+1),
             #                      1.0/input_dim)
             layer_W = 0.5 * \
                 torch.ones(layer_dim, self.num_branches, input_dim + 1)
             if self.hparams["gpu"]:
-                self.ctx.append(layer_ctx.cuda())
+                self.ctx_params.append(layer_ctx_params.cuda())
                 self.W.append(layer_W.cuda())
             else:
-                self.ctx.append(layer_ctx)
+                self.ctx_params.append(layer_ctx_params)
                 self.W.append(layer_W)
 
     def lr(self):
@@ -83,12 +85,13 @@ class BinaryDGN(LightningModule):
         layer_dim, _, input_dim = self.W[l_idx].shape
         layer_bias = e / (e+1)
         h = torch.cat(
-            [h, layer_bias *
+            [h.detach(), layer_bias *
                 torch.ones(h.shape[0], 1, device=self.device)],
             dim=1)
         assert(input_dim == h.shape[1])
         # c: [batch_size, layer_dim]
-        c = self.ctx[l_idx].calc(s, self.hparams["gpu"])
+        c = RandHalfSpaceDGN.calc(
+            s, self.ctx_params[l_idx], self.hparams["gpu"])
         # weights: [batch_size, layer_dim, input_dim]
         weights = torch.bmm(c.float().permute(2, 0, 1),
                             self.W[l_idx]).permute(1, 0, 2)
@@ -148,7 +151,7 @@ class BinaryDGN(LightningModule):
         if is_train and self.hparams["plot"]:
             if self.binary_class == 0 and not (self.t % 5):
                 #
-                print('\ntemp\n', self.ctx[2].hyperplanes[0])
+                print('\ntemp\n', self.ctx_params[2])
                 #
 
                 def forward_fn(xy): return self.forward_helper(
@@ -156,8 +159,29 @@ class BinaryDGN(LightningModule):
 
                 def add_ctx_to_plot(xy, add_to_plot_fn):
                     for l_idx in range(self.num_layers_used):
-                        Z = self.ctx[l_idx].calc_raw(xy)
+                        Z = RandHalfSpaceDGN.calc_raw(
+                            xy, self.ctx_params[l_idx])
                         for b_idx in range(self.num_branches):
                             add_to_plot_fn(Z[:, b_idx])
                 self.plotter.save_data(forward_fn, add_ctx_to_plot)
         return torch.sigmoid(h)
+
+    def training_step(self, batch, batch_idx, optimizer_idx):
+        opt = self.optimizers()
+        opt.zero_grad()
+        loss = self.compute_loss(batch)
+        self.manual_backward(loss)
+        opt.step()
+        return
+
+    # With only neuron weight updating
+    # def configure_optimizers(self):
+    #     pass
+
+    # With neuron weight updating and global straight-through estimators
+    def configure_optimizers(self):
+        return [torch.optim.Adam(params=i) for i in self.ctx_params]
+
+    # With neuron weight updating and local straight-through estimators
+    # def configure_optimizers(self):
+    #     return [torch.optim.Adam(params=i) for i in self.ctx_params]

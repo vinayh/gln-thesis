@@ -10,7 +10,7 @@ pred_clipping: 0.01
 weight_clipping: 5
 lr: 0.0001
 weight_decay: 0.0005
-trained_ctx: False
+pretrained_ctx: False
 gpu: false
 svm_context: true
 use_saved_svm: false
