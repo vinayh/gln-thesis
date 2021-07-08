@@ -1,7 +1,6 @@
 import torch
 
-# from src.utils.helpers import STEFunction
-from src.utils.helpers import Binary
+from src.utils.helpers import StraightThroughEstimator
 
 
 class RandHalfSpaceDGN():
@@ -41,7 +40,7 @@ class RandHalfSpaceDGN():
         product = hyperplanes.matmul(s.T).permute(2, 1, 0)
 
         # Straight-through estimator
-        return 0.5*(Binary.apply(product)+1)
+        return 0.5*(StraightThroughEstimator.apply(product)+1)
         # return (torch.einsum('abc,dc->dba', hyperplanes, s) > 0).bool()
         # return (hyperplanes.matmul(s.permute(1, 0)).permute(2, 1, 0) > 0).bool()
 

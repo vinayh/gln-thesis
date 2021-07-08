@@ -21,19 +21,17 @@ class DGNModel(OVAModel):
             y_all_ova = [0] * self.num_classes
         return X_all, y_all_ova
 
-    def get_models(self, gpu=False):
+    def get_model_params(self):
         self.datamodule = self.hparams["datamodule"]
         X_all, y_all_ova = self.get_plot_data()
+        model_params = [BinaryDGN(hparams=self.hparams, binary_class=i,
+                                  X_all=X_all,
+                                  y_all=y_all_ova[i])
+                        for i in range(self.num_classes)]
         if self.hparams["gpu"]:
-            return [BinaryDGN(hparams=self.hparams, binary_class=i,
-                              X_all=X_all,
-                              y_all=y_all_ova[i]).cuda()
-                    for i in range(self.num_classes)]
+            return [i.cuda() for i in model_params]
         else:
-            return [BinaryDGN(hparams=self.hparams, binary_class=i,
-                              X_all=X_all,
-                              y_all=y_all_ova[i])
-                    for i in range(self.num_classes)]
+            return model_params
 
     def configure_optimizers(self):
         """Choose what optimizers and learning-rate schedulers to use in your optimization.

@@ -38,6 +38,18 @@
             ]
         },
         {
+            "name": "Train new DGN - Debug, toy",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": [
+                "trainer=debug_trainer",
+                "model=dgn_model_new_toy_clustering",
+                "datamodule=toy_clustering_datamodule",
+                "logger=tensorboard"
+            ]
+        },
+        {
             "name": "Train DGN - Debug, toy clustering",
             "type": "python",
             "request": "launch",

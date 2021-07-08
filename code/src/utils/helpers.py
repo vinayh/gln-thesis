@@ -47,16 +47,16 @@ class STEFunction(torch.autograd.Function):
         return torch.nn.functional.hardtanh(grad_output)
 
 
-class StraightThroughEstimator(torch.nn.Module):
-    def __init__(self):
-        super(StraightThroughEstimator, self).__init__()
+# class StraightThroughEstimator(torch.nn.Module):
+#     def __init__(self):
+#         super(StraightThroughEstimator, self).__init__()
 
-    def forward(self, x):
-        x = STEFunction.apply(x)
-        return x
+#     def forward(self, x):
+#         x = STEFunction.apply(x)
+#         return x
 
 
-class Binary(torch.autograd.Function):
+class StraightThroughEstimator(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input):
         return torch.sign(input)  # this outputs 1 or -1
