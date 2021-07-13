@@ -37,6 +37,7 @@ class RandHalfSpaceDGN():
                                               sample in batch
         """
         # product = torch.einsum('abc,dc->dba', hyperplanes, s)
+        # with torch.no_grad():
         product = hyperplanes.matmul(s.T).permute(2, 1, 0)
 
         # Straight-through estimator
