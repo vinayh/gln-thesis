@@ -34,6 +34,7 @@ class DGNModelNew(LightningModule):
         self.num_classes = self.hparams["num_classes"]
         self.criterion = torch.nn.CrossEntropyLoss()
         self.binary_criterion = torch.nn.BCEWithLogitsLoss()
+        self.L1_loss = torch.nn.L1Loss(reduction="sum")
         self.params = self.get_model_params()
         self.added_graph = False
         # Example input array for TensorBoard logger
@@ -75,11 +76,10 @@ class DGNModelNew(LightningModule):
         return model_params
 
     def train_helper(self, x, y_ova, is_train=False):
-        for i, opt_i in enumerate(self.optimizers()):
-            opt_i.zero_grad()
+        outputs = []
+        for i, p_i in enumerate(self.params):  # For each binary model
             # Setup
-            params = self.params[i]
-            y_binary = y_ova[i]
+            y_i = y_ova[i]
             if len(x.shape) > 1:
                 s = x.flatten(start_dim=1)
             s_bias = torch.cat(
@@ -87,17 +87,24 @@ class DGNModelNew(LightningModule):
             # Layers of network
             h = BINARY_MODEL.base_layer(s_bias)
             for l_idx in range(self.hparams["num_layers_used"]):
-                h, params = BINARY_MODEL.gated_layer(params, self.hparams, h,
-                                                     s_bias, y_binary, l_idx,
-                                                     is_train=True, is_gpu=False)
-            # Output
-            logits_binary = torch.sigmoid(h)
-            # Training
-            if is_train:
-                loss = self.binary_criterion(
-                    logits_binary.squeeze(1), y_binary.float())
-                self.manual_backward(loss)
-                opt_i.step()
+                h, p_i = BINARY_MODEL.gated_layer(p_i, self.hparams, h,
+                                                  s_bias, y_i, l_idx,
+                                                  is_train=True, is_gpu=False)
+                layer_logits = torch.sigmoid(h)
+                if is_train:
+                    loss = self.L1_loss(layer_logits, y_i)
+                    # print(p_i["weights"][l_idx].grad)
+                    p_i["opt"][l_idx].zero_grad()
+                    # print(p_i["weights"][l_idx].grad)
+                    loss.backward()
+                    # print(p_i["weights"][l_idx].grad)
+                    p_i["opt"][l_idx].step()
+            # Updating weights
+            # if is_train:
+            #     for i, p_i in enumerate(self.params):
+            #         for opt_i in p_i["opt"]:
+            #             opt_i.step()
+            #             opt_i.zero_grad()
 
             # if is_train and self.hparams["plot"]:
             # if i == 1 and not (self.t % 5):
@@ -110,25 +117,30 @@ class DGNModelNew(LightningModule):
             #     #         for b_idx in range(hparams["num_branches"]):
             #     #             add_to_plot_fn(Z[:, b_idx])
             #     # plotter.save_data(forward_fn, add_ctx_to_plot)
+            outputs.append(layer_logits)
+        logits = torch.stack(outputs).T.squeeze(0)
+        return logits
 
-    def training_step(self, batch: Any, batch_idx: int, optimizer_idx: int):
+    def training_step(self, batch: Any, batch_idx: int):
         # Train
         self.t += 1
         self.hparams.device = self.device
-        assert(optimizer_idx is not None)
+        # assert(optimizer_idx is not None)
         x, y = batch
         y_ova = to_one_vs_all(y, self.num_classes, self.device)
-        logits_binary, y_binary, loss = self.train_helper(
-            x, y_ova, is_train=True)
-
+        # logits_binary, y_binary, loss = self.train_helper(
+        #     x, y_ova, is_train=True)
+        logits = self.train_helper(x, y_ova, is_train=True)
+        loss = self.criterion(logits, y.long())
+        acc = self.train_accuracy(torch.argmax(logits, dim=1), y)
         # Log
-        acc = self.train_accuracy(logits_binary, y_binary)
         self.log("train/loss", loss, on_step=False,
                  on_epoch=True, prog_bar=False)
         self.log("train/acc", acc, on_step=False,
                  on_epoch=True, prog_bar=True)
         self.log("lr", BINARY_MODEL.lr(self.hparams),
                  on_step=True, on_epoch=True, prog_bar=True)
+
         # TODO: Use other optimizers besides idx 0
         # opt = self.optimizers()[0]
         # opt.zero_grad()
@@ -138,15 +150,16 @@ class DGNModelNew(LightningModule):
         # we can return here dict with any tensors
         # and then read it in some callback or in training_epoch_end() below
         # return {"loss": loss, "logits_binary": logits_binary, "y_binary": y_binary}
+
         return {"loss": loss}
 
     def test_helper(self, batch: Any):
+        x, y = batch
         # if not self.added_graph:
         #     ex_inputs = (x, y, torch.tensor(False), torch.tensor(0))
         #     self.logger.experiment[0].add_graph(
         #         self, input_to_model=ex_inputs, verbose=False)
         #     self.added_graph = True
-        x, y = batch
         y_ova = to_one_vs_all(y, self.num_classes, self.device)
         outputs = [BINARY_MODEL.forward(self.params[i], i, self.hparams,
                                         self.t, x, y_ova[i], is_train=False)
@@ -203,8 +216,9 @@ class DGNModelNew(LightningModule):
         pass
 
     def configure_optimizers(self):
-        optimizers = []
-        for p_i in self.params:
-            # optimizers + BINARY_MODEL.configure_optimizers(p_i)
-            optimizers = optimizers + p_i["opt"]
-        return optimizers
+        # optimizers = []
+        # for p_i in self.params:
+        #     # optimizers + BINARY_MODEL.configure_optimizers(p_i)
+        #     optimizers = optimizers + p_i["opt"]
+        # return optimizers
+        pass

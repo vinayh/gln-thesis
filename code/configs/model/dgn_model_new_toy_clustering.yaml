@@ -6,7 +6,7 @@ lin2_size: 1
 lin3_size: 1
 num_classes: 3
 num_branches: 5
-num_layers_used: 1
+num_layers_used: 3
 pred_clipping: 0.01
 weight_clipping: 5
 lr: 0.01
