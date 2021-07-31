@@ -1,11 +1,9 @@
-from torch import optim
-from torch.optim import optimizer
-from src.utils.helpers import to_one_vs_all
-from typing import Any, List
-
 import torch
+
 from pytorch_lightning import LightningModule
 from pytorch_lightning.metrics.classification import Accuracy
+from src.utils.helpers import to_one_vs_all
+from typing import Any, List
 
 import src.models.modules.binary_dgn as BinaryDGN
 BINARY_MODEL = BinaryDGN
@@ -86,18 +84,21 @@ class DGNModelNew(LightningModule):
                 [s, torch.ones(s.shape[0], 1, device=self.hparams.device)], dim=1)
             # Layers of network
             h = BINARY_MODEL.base_layer(s_bias)
+            # For each layer, calculate loss of layer output, zero out grads
+            # for layer weights, and perform update step using backward pass
+            train_autograd_params = self.hparams["train_autograd_params"]
             for l_idx in range(self.hparams["num_layers_used"]):
-                h, p_i = BINARY_MODEL.gated_layer(p_i, self.hparams, h,
-                                                  s_bias, y_i, l_idx,
-                                                  is_train=True, is_gpu=False)
+                h, p_i, h_updated = BINARY_MODEL.gated_layer(p_i, self.hparams, h,
+                                                             s_bias, y_i, l_idx,
+                                                             is_train=is_train, is_gpu=False,
+                                                             updated_outputs=train_autograd_params)
                 layer_logits = torch.sigmoid(h)
-                if is_train:
-                    loss = self.L1_loss(layer_logits, y_i)
-                    # print(p_i["weights"][l_idx].grad)
+                if is_train and train_autograd_params:
+                    layer_logits_updated = torch.sigmoid(h_updated)
+                    loss = self.L1_loss(layer_logits_updated.T, y_i)
                     p_i["opt"][l_idx].zero_grad()
                     # print(p_i["weights"][l_idx].grad)
                     loss.backward()
-                    # print(p_i["weights"][l_idx].grad)
                     p_i["opt"][l_idx].step()
             # Updating weights
             # if is_train:

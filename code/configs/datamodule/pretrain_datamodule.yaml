@@ -1,0 +1,3 @@
+_target_: src.datamodules.pretrain_datamodule.PretrainDataModule
+
+data_dir: ${data_dir} # data_dir is specified in config.yaml

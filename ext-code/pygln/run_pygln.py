@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from sklearn.metrics import accuracy_score
 
 from pygln import utils
@@ -17,6 +18,6 @@ for n in range(X_train.shape[0]):
 print('Testing')
 preds = []
 for n in range(X_test.shape[0]):
-    preds.append(model.predict(X_test[n]))
+    preds.append(model.predict(torch.tensor(X_test[n])))
 
 print('Accuracy:', accuracy_score(y_test, np.vstack(preds)))

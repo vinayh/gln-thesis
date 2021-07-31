@@ -41,8 +41,7 @@ class PretrainDataModule(LightningDataModule):
 
     def __init__(
         self,
-        data_dir: str = "data/",
-        **kwargs
+        data_dir: str
     ):
         super().__init__()
 

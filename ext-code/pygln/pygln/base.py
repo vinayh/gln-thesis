@@ -47,6 +47,7 @@ class GLNBase(OnlineUpdateModel):
         pred_clipping (0.0 < float < 0.5): Clip predictions into [p, 1 - p] at each layer.
         weight_clipping (float > 0.0): Clip weights into [-w, w] after each update.
     """
+
     def __init__(self,
                  layer_sizes: Sequence[int],
                  input_size: int,
@@ -54,7 +55,8 @@ class GLNBase(OnlineUpdateModel):
                  context_map_size: int = 4,
                  bias: bool = True,
                  context_bias: bool = False,
-                 base_predictor: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+                 base_predictor: Optional[Callable[[
+                     np.ndarray], np.ndarray]] = None,
                  learning_rate: float = 1e-3,
                  pred_clipping: float = 1e-3,
                  weight_clipping: float = 5.0):
@@ -77,10 +79,11 @@ class GLNBase(OnlineUpdateModel):
         self.context_bias = bool(context_bias)
 
         if base_predictor is None:
-            self.base_predictor = (
-                lambda x: (x - x.min(axis=1, keepdims=True)) /
-                (x.max(axis=1, keepdims=True) - x.min(axis=1, keepdims=True))
-            )
+            # self.base_predictor = (
+            #     lambda x: (x - x.min(axis=1, keepdims=True)) /
+            #     (x.max(axis=1, keepdims=True) - x.min(axis=1, keepdims=True))
+            # )
+            self.base_predictor = (lambda x: x)
             self.base_pred_size = self.input_size
         else:
             self.base_predictor = base_predictor

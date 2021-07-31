@@ -11,6 +11,33 @@ from src.utils.helpers import logit
 from src.utils.gated_plotter import GatedPlotter
 
 
+def lr(self):
+    # return 0.1
+    return min(0.1, 0.2/(1.0 + 1e-2 * self.t))
+
+
+def init_params(num_neurons, hparams, binary_class=0, X_all=None, y_all=None):
+    ctx, W, opt = [], [], []
+    for i in range(1, len(num_neurons)):
+        with torch.no_grad():
+            input_dim, layer_dim = num_neurons[i-1], num_neurons[i]
+            layer_ctx = RandHalfSpaceGLN(hparams["input_size"] + 1, layer_dim,
+                                         hparams["num_subcontexts"],
+                                         ctx_bias=hparams["ctx_bias"])
+            layer_W = 0.5 * \
+                torch.ones(layer_dim, hparams["num_branches"], input_dim + 1)
+            ctx_param = torch.nn.Parameter(layer_ctx, requires_grad=True)
+            W_param = torch.nn.Parameter(layer_W, requires_grad=True)
+        if hparams["gpu"]:
+            ctx_param = ctx_param.cuda()
+            W_param = W_param.cuda()
+        layer_opt = torch.optim.SGD(params=[ctx_param], lr=0.1)
+        ctx.append(ctx_param)
+        W.append(W_param)
+        opt.append(layer_opt)
+    return {"ctx": ctx, "weights": W, "opt": opt}
+
+
 class BinaryGLN(LightningModule):
     def __init__(self, hparams: dict, binary_class: int, X_all=None, y_all=None):
         super().__init__()
@@ -60,10 +87,6 @@ class BinaryGLN(LightningModule):
 
         if self.hparams["plot"]:
             self.plotter = GatedPlotter(X_all, y_all, add_ctx_to_plot)
-
-    def lr(self):
-        # return 0.1
-        return min(0.1, 0.2/(1.0 + 1e-2 * self.t))
 
     def gated_layer(self, logit_x, s, y, l_idx, is_train):
         """Using provided input activations, context functions, and weights,

@@ -35,5 +35,5 @@ def deskew_fn(image):
 def deskewAll(X):
     currents = []
     for i in range(len(X)):
-        currents.append(deskew(X[i].reshape(28, 28)).flatten())
+        currents.append(deskew_fn(X[i].reshape(28, 28)).flatten())
     return np.array(currents)

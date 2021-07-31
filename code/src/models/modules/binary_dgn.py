@@ -22,7 +22,7 @@ def init_params(num_neurons, hparams, binary_class=0, X_all=None, y_all=None):
         if hparams["gpu"]:
             ctx_param = ctx_param.cuda()
             W_param = W_param.cuda()
-        layer_opt = torch.optim.SGD(params=[W_param], lr=0.2)
+        layer_opt = torch.optim.SGD(params=[ctx_param], lr=0.1)
         ctx.append(ctx_param)
         W.append(W_param)
         opt.append(layer_opt)
@@ -34,7 +34,7 @@ def lr(hparams):
     return hparams["lr"]
 
 
-def gated_layer(params, hparams, h, s, y, l_idx, is_train, is_gpu):
+def gated_layer(params, hparams, h, s, y, l_idx, is_train, is_gpu, updated_outputs=False):
     """Using provided input activations, context functions, and weights,
         returns the result of the DGN layer
 
@@ -61,24 +61,34 @@ def gated_layer(params, hparams, h, s, y, l_idx, is_train, is_gpu):
                         params["weights"][l_idx]).permute(1, 0, 2)
     # h_out: [batch_size, layer_dim]
     h_out = torch.bmm(weights, h.unsqueeze(2)).squeeze(2)
-    # if is_train:
-    #     t = y.unsqueeze(1)
-    #     r_out = torch.sigmoid(h_out)
-    #     r_out_clipped = torch.clamp(r_out,
-    #                                 min=hparams["pred_clipping"],
-    #                                 max=1-hparams["pred_clipping"])
-    #     # learn_gates: [batch_size, layer_dim]
-    #     learn_gates = (torch.abs(t - r_out) > hparams["pred_clipping"]).float()
-    #     w_grad1 = (r_out_clipped - t) * learn_gates
-    #     w_grad2 = torch.bmm(w_grad1.unsqueeze(2), h.unsqueeze(1))
-    #     w_delta = torch.bmm(c.float().permute(2, 1, 0),
-    #                         w_grad2.permute(1, 0, 2))
-    #     # assert(w_delta.shape == W[l_idx].shape)
-    #     # TODO delete this: W.grad = w_delta
-    #     # optimizer[].step(0)
-
-    #     params["weights"][l_idx] -= lr(hparams) * w_delta
-    return h_out, params
+    ###
+    if is_train:
+        t = y.unsqueeze(1)
+        r_out = torch.sigmoid(h_out)
+        r_out_clipped = torch.clamp(r_out,
+                                    min=hparams["pred_clipping"],
+                                    max=1-hparams["pred_clipping"])
+        # learn_gates: [batch_size, layer_dim]
+        learn_gates = (torch.abs(t - r_out) > hparams["pred_clipping"]).float()
+        w_grad1 = (r_out_clipped - t) * learn_gates
+        w_grad2 = torch.bmm(w_grad1.unsqueeze(2), h.unsqueeze(1))
+        w_delta = torch.bmm(c.float().permute(2, 1, 0),
+                            w_grad2.permute(1, 0, 2))
+        # assert(w_delta.shape == W[l_idx].shape)
+        # TODO delete this: W.grad = w_delta
+        # optimizer[].step(0)
+        with torch.no_grad():
+            params["weights"][l_idx] = params["weights"][l_idx] - \
+                lr(hparams) * w_delta
+        # Get new layer output with updated weights
+        if updated_outputs:
+            # weights: [batch_size, layer_dim, input_dim]
+            weights = torch.bmm(c.float().permute(2, 0, 1),
+                                params["weights"][l_idx]).permute(1, 0, 2)
+            # h_out_updated: [batch_size, layer_dim]
+            h_out_updated = torch.bmm(weights, h.unsqueeze(2)).squeeze(2)
+            return h_out, params, h_out_updated
+    return h_out, params, None
 
 
 def base_layer(s_bias):
@@ -105,46 +115,11 @@ def forward(params, binary_class, hparams, t, s, y, is_train: bool):
         [s, torch.ones(s.shape[0], 1, device=hparams.device)], dim=1)
     h = base_layer(s_bias)
     for l_idx in range(hparams["num_layers_used"]):
-        h, params = gated_layer(params, hparams, h, s_bias, y,
-                                l_idx, is_train, is_gpu=False)
+        h, params, _ = gated_layer(params, hparams, h, s_bias, y,
+                                   l_idx, is_train, is_gpu=False)
     return torch.sigmoid(h)
 
 
 # def configure_optimizers(params):  # Global straight-through, NO neuron updates
 #     return [torch.optim.SGD(params=params["ctx"], lr=0.1)]
 #     # return [torch.optim.Adam(params=params["ctx"], lr=0.1)]
-
-# def configure_optimizers(params):  # Only neuron weight updating
-#     pass
-
-# def configure_optimizers(params):  # Neuron updates and global straight-through
-#     pass
-
-# def configure_optimizers(params):  # Neuron updates, local straight-through
-#     return [torch.optim.Adam(params=i) for i in params["ctx"]]
-
-# def configure_optimizers(params):  # Local straight-through, NO neuron updates
-#     return [torch.optim.Adam(params=[ctx_layer]) for ctx_layer in params["ctx"]]
-
-
-######
-# Old
-######
-
-# class BinaryDGN(LightningModule):
-    # def add_ctx_to_plot(xy, add_to_plot_fn):
-    #     for l_idx in range(hparams["num_layers_used"]):
-    #         Z = RandHalfSpaceDGN.calc_raw(xy, params["ctx"][l_idx])
-    #         for b_idx in range(self.num_branches):
-    #             add_to_plot_fn(Z[:, b_idx])
-
-    # if hparams["plot"]:
-    #     self.plotter = GatedPlotter(X_all, y_all, add_ctx_to_plot)
-
-    # def training_step(self, batch, batch_idx, optimizer_idx):
-    #     opt = self.optimizers()
-    #     opt.zero_grad()
-    #     loss = self.compute_loss(batch)
-    #     self.manual_backward(loss)
-    #     opt.step()
-    #     return
