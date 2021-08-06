@@ -1,7 +1,7 @@
 import torch
 from math import e
 
-from src.models.modules.rand_halfspace_dgn import RandHalfSpaceDGN
+import src.models.modules.rand_halfspace_dgn as rand_hspace_dgn
 # from src.utils.gated_plotter import GatedPlotter
 
 
@@ -10,11 +10,11 @@ def init_params(num_neurons, hparams, binary_class=0, X_all=None, y_all=None):
     for i in range(1, len(num_neurons)):
         with torch.no_grad():
             input_dim, layer_dim = num_neurons[i-1], num_neurons[i]
-            layer_ctx = RandHalfSpaceDGN.get_params(hparams["input_size"] + 1,
-                                                    layer_dim,
-                                                    hparams["num_branches"],
-                                                    ctx_bias=True,
-                                                    pretrained_ctx=hparams["pretrained_ctx"])
+            layer_ctx = rand_hspace_dgn.get_params(hparams["input_size"] + 1,
+                                                   layer_dim,
+                                                   hparams["num_branches"],
+                                                   ctx_bias=True,
+                                                   pretrained_ctx=hparams["pretrained_ctx"])
             layer_W = 0.5 * \
                 torch.ones(layer_dim, hparams["num_branches"], input_dim + 1)
             ctx_param = torch.nn.Parameter(layer_ctx, requires_grad=True)
@@ -54,7 +54,7 @@ def gated_layer(params, hparams, h, s, y, l_idx, is_train, is_gpu, updated_outpu
     # assert(input_dim == h.shape[1])
 
     # c: [batch_size, layer_dim]
-    c = RandHalfSpaceDGN.calc(
+    c = rand_hspace_dgn.calc(
         s, params["ctx"][l_idx], is_gpu)
     # weights: [batch_size, layer_dim, input_dim]
     weights = torch.bmm(c.float().permute(2, 0, 1),
@@ -99,7 +99,7 @@ def base_layer(s_bias):
     return s_bias[:, :-1]
 
 
-def forward(params, binary_class, hparams, t, s, y, is_train: bool):
+def forward(params, hparams, binary_class, t, s, y, is_train: bool, plotter=None):
     """Calculate output of DGN for input x and side info s
 
     Args:
@@ -117,7 +117,7 @@ def forward(params, binary_class, hparams, t, s, y, is_train: bool):
     for l_idx in range(hparams["num_layers_used"]):
         h, params, _ = gated_layer(params, hparams, h, s_bias, y,
                                    l_idx, is_train, is_gpu=False)
-    return torch.sigmoid(h)
+    return torch.sigmoid(h), plotter
 
 
 # def configure_optimizers(params):  # Global straight-through, NO neuron updates

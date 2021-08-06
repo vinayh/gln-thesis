@@ -13,29 +13,18 @@ class OVAModel(LightningModule):
     LightningModule for classification (e.g. MNIST) with one-vs-all abstraction.
     """
 
-    def __init__(
-        self,
-        # input_size: int = 784,
-        # lin1_size: int = 256,
-        # lin2_size: int = 256,
-        # lin3_size: int = 256,
-        # num_classes: int = 10,
-        # lr: float = 0.001,
-        # weight_decay: float = 0.0005,
-        **kwargs
-    ):
+    def __init__(self, **kwargs):
         super().__init__()
-
         self.automatic_optimization = False
-        self.save_hyperparameters()
         self.num_classes = self.hparams["num_classes"]
-        self.criterion = torch.nn.CrossEntropyLoss()
         self.models = self.get_models(self.hparams["gpu"])
         self.added_graph = False
+        self.hparams.device = self.device
         # Example input array for TensorBoard logger
         self.train_accuracy = Accuracy()
         self.val_accuracy = Accuracy()
         self.test_accuracy = Accuracy()
+        self.datamodule = self.hparams["datamodule"]
 
         self.metric_hist = {
             "train/acc": [],
@@ -63,7 +52,7 @@ class OVAModel(LightningModule):
             [BinaryGLN]: List of instances of a binary module (BinaryGLN, ...)
                          which will each be trained for a binary one-vs-all task
         """
-        return []
+        return NotImplementedError
 
     def forward(self, x: torch.Tensor, y: torch.Tensor, is_train: bool):
         """[summary]
@@ -82,61 +71,31 @@ class OVAModel(LightningModule):
                    for i in range(self.num_classes)]
         return torch.stack(outputs).T.squeeze(0)
 
-    def step(self, batch: Any, is_train=True):
-        """[summary]
+    # def step(self, batch: Any, is_train=True):
+    #     """[summary]
 
-        Args:
-            batch (Any): [description]
-            is_train (bool, optional): [description]. Defaults to True.
+    #     Args:
+    #         batch (Any): [description]
+    #         is_train (bool, optional): [description]. Defaults to True.
 
-        Returns:
-            [type]: [description]
-        """
-        # with torch.no_grad():
-        x, y = batch
-        logits = self.forward(x, y, is_train)
-        loss = self.criterion(logits, y)
-        preds = torch.argmax(logits, dim=1)
-        if not self.added_graph:
-            ex_inputs = (x, y, torch.tensor(False))
-            self.logger.experiment[0].add_graph(
-                self.models[0], input_to_model=ex_inputs, verbose=False)
-            # make_dot(self.models[0](*ex_inputs)).render(
-            #     "attached", format="png")
-            self.added_graph = True
-        return loss, preds, y
-
-    def training_step(self, batch: Any, batch_idx: int):
-        """[summary]
-
-        Args:
-            batch (Any): [description]
-            batch_idx (int): [description]
-
-        Returns:
-            [type]: [description]
-        """
-        # with torch.no_grad():
-        loss, preds, targets = self.step(batch, is_train=True)
-        acc = self.train_accuracy(preds, targets)
-        self.log("train/loss", loss, on_step=False,
-                 on_epoch=True, prog_bar=False)
-        self.log("train/acc", acc, on_step=False,
-                 on_epoch=True, prog_bar=True)
-        self.log("lr", self.models[0].lr(),
-                 on_step=True, on_epoch=True, prog_bar=True)
-        # we can return here dict with any tensors
-        # and then read it in some callback or in training_epoch_end() below
-
-        # return {"loss": loss, "preds": preds, "targets": targets}
-        return {"loss": loss}
+    #     Returns:
+    #         [type]: [description]
+    #     """
+    #     # with torch.no_grad():
+    #     x, y = batch
+    #     logits = self.forward(x, y, is_train)
+    #     loss = self.criterion(logits, y)
+    #     preds = torch.argmax(logits, dim=1)
+    #     if not self.added_graph:
+    #         ex_inputs = (x, y, torch.tensor(False))
+    #         self.logger.experiment[0].add_graph(
+    #             self.models[0], input_to_model=ex_inputs, verbose=False)
+    #         # make_dot(self.models[0](*ex_inputs)).render(
+    #         #     "attached", format="png")
+    #         self.added_graph = True
+    #     return loss, preds, y
 
     def training_epoch_end(self, outputs: List[Any]):
-        """[summary]
-
-        Args:
-            outputs (List[Any]): [description]
-        """
         # log best so far train acc and train loss
         self.metric_hist["train/acc"].append(
             self.trainer.callback_metrics["train/acc"])
@@ -148,34 +107,16 @@ class OVAModel(LightningModule):
                  min(self.metric_hist["train/loss"]), prog_bar=False)
 
     def validation_step(self, batch: Any, batch_idx: int):
-        """[summary]
-
-        Args:
-            batch (Any): [description]
-            batch_idx (int): [description]
-
-        Returns:
-            [type]: [description]
-        """
-        # with torch.no_grad():
-        loss, preds, targets = self.step(batch, is_train=False)
-        # log val metrics
-        acc = self.val_accuracy(preds, targets)
+        loss, logits_binary, y_binary = self.forward(batch)
+        acc = self.val_accuracy(logits_binary, y_binary)
         self.log("val/loss", loss, on_step=False,
                  on_epoch=True, prog_bar=False)
         self.log("val/acc", acc, on_step=False,
                  on_epoch=True, prog_bar=True)
-
-        # return {"loss": loss, "preds": preds, "targets": targets}
+        # return {"loss": loss, "logits_binary": logits_binary, "y_binary": y_binary}
         return {"loss": loss}
 
     def validation_epoch_end(self, outputs: List[Any]):
-        """[summary]
-
-        Args:
-            outputs (List[Any]): [description]
-        """
-        # log best so far val acc and val loss
         self.metric_hist["val/acc"].append(
             self.trainer.callback_metrics["val/acc"])
         self.metric_hist["val/loss"].append(
@@ -186,35 +127,34 @@ class OVAModel(LightningModule):
                  min(self.metric_hist["val/loss"]), prog_bar=False)
 
     def test_step(self, batch: Any, batch_idx: int):
-        """[summary]
-
-        Args:
-            batch (Any): [description]
-            batch_idx (int): [description]
-
-        Returns:
-            [type]: [description]
-        """
-        # with torch.no_grad():
-        loss, preds, targets = self.step(batch, is_train=False)
-        # log test metrics
-        acc = self.test_accuracy(preds, targets)
+        loss, logits_binary, y_binary = self.forward(batch)
+        acc = self.test_accuracy(logits_binary, y_binary)
         self.log("test/loss", loss, on_step=False, on_epoch=True)
         self.log("test/acc", acc, on_step=False, on_epoch=True)
-
-        # return {"loss": loss, "preds": preds, "targets": targets}
+        # return {"loss": loss, "logits_binary": logits_binary, "y_binary": y_binary}
         return {"loss": loss}
 
     def test_epoch_end(self, outputs: List[Any]):
-        if self.hparams["plot"]:
-            # for i in range(self.num_classes):
-            for i in range(1):  # TODO: Currently only if class == 0
-                self.models[i].plotter.save_animation('class_{}.gif'.format(i))
+        # if self.hparams["plot"]:
+        #     # for i in range(self.num_classes):
+        #     for i in range(1):  # TODO: Currently only if class == 0
+        #         self.params[i].plotter.save_animation('class_{}.gif'.format(i))
+        pass
 
     def configure_optimizers(self):
-        """Choose what optimizers and learning-rate schedulers to use in your optimization.
-        Normally you'd need one. But in the case of GANs or similar you might have multiple.
-        See examples here:
-            https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#configure-optimizers
-        """
+        # optimizers = []
+        # for p_i in self.params:
+        #     # optimizers + BINARY_MODEL.configure_optimizers(p_i)
+        #     optimizers = optimizers + p_i["opt"]
+        # return optimizers
         pass
+
+    def get_plot_data(self):
+        if self.hparams["plot"]:
+            datamodule = self.hparams["datamodule"]
+            X_all, y_all = datamodule.get_all_data()
+            y_all_ova = to_one_vs_all(y_all, self.num_classes)
+        else:
+            X_all = None
+            y_all_ova = [0] * self.num_classes
+        return X_all, y_all_ova

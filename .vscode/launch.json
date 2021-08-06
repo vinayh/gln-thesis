@@ -76,6 +76,19 @@
                 "datamodule.deskew=true"
             ]
         },
+        {
+            "name": "Train new GLN - Debug, MNIST",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": [
+                "trainer=debug_trainer",
+                "model=gln_model_new_mnist",
+                "datamodule=mnist_datamodule",
+                "logger=tensorboard",
+                "datamodule.deskew=false"
+            ]
+        },
         // {
         //     "name": "Train DGN - Debug, toy clustering",
         //     "type": "python",

@@ -1,15 +1,14 @@
 import torch
 
-from pytorch_lightning import LightningModule
-from pytorch_lightning.core.lightning import LightningModule
 from pytorch_lightning.metrics.classification import Accuracy
-from src.utils.helpers import to_one_vs_all
+# from src.utils.helpers import to_one_vs_all
+from typing import Any, List
 
 import src.models.modules.binary_gln as BinaryGLN
 BINARY_MODEL = BinaryGLN
 
 
-class GLNModelNew(LightningModule):
+class GLNModelNew(OVAModel):
     """
     LightningModule for classification (e.g. MNIST) using binary GLN with one-vs-all abstraction.
     """
@@ -17,28 +16,25 @@ class GLNModelNew(LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
         self.t = 0
-        self.automatic_optimization = False
         self.save_hyperparameters()
-        self.num_classes = self.hparams["num_classes"]
         self.criterion = torch.nn.CrossEntropyLoss()
         self.binary_criterion = torch.nn.BCEWithLogitsLoss()
         self.L1_loss = torch.nn.L1Loss(reduction="sum")
         self.params = self.get_model_params()
-        self.added_graph = False
-        # Example input array for TensorBoard logger
-        self.train_accuracy = Accuracy()
-        self.val_accuracy = Accuracy()
-        self.test_accuracy = Accuracy()
-        self.hparams.device = self.device
-        self.metric_hist = {
-            "train/acc": [],
-            "val/acc": [],
-            "train/loss": [],
-            "val/loss": [],
-        }
+        # s_dim = hparams["input_size"]
+        # self.l_sizes = (s_dim, hparams["lin1_size"],
+        #                 hparams["lin2_size"], hparams["lin3_size"])
+        # self.ctx_bias = True
+        # self.w_clip = hparams["weight_clipping"]
+        # s_dim = hparams["input_size"]
+        # self.num_layers_used = hparams["num_layers_used"]
+        # self.num_subctx = hparams["num_subcontexts"]
+        # self.num_ctx = 2**self.num_subctx
+        # self.X_all = X_all
+        # self.y_all = y_all
+        # self.binary_class = binary_class
 
     def get_model_params(self):
-        self.datamodule = self.hparams["datamodule"]
         X_all, y_all_ova = self.get_plot_data()
         num_neurons = self.num_neurons = (
             self.hparams["input_size"],
@@ -52,6 +48,13 @@ class GLNModelNew(LightningModule):
                                                  y_all=y_all_ova[i])
                         for i in range(self.num_classes)]
         return model_params
+
+    def training_step(self, batch: Any, batch_idx: int):
+        loss = 0
+        return {"loss": loss}
+
+    def forward(self, batch: Any):
+        return
 
     # def get_models(self, gpu=False):
     #     self.datamodule = self.hparams["datamodule"]
