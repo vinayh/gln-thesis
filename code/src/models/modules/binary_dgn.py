@@ -29,12 +29,13 @@ def init_params(num_neurons, hparams, binary_class=0, X_all=None, y_all=None):
     return {"ctx": ctx, "weights": W, "opt": opt}
 
 
-def lr(hparams):
+def lr(hparams, t):
     # return min(hparams["lr"], (1.1 * hparams["lr"])/(1.0 + 1e-2 * t))
     return hparams["lr"]
 
 
-def gated_layer(params, hparams, h, s, y, l_idx, is_train, is_gpu, updated_outputs=False):
+def gated_layer(params, hparams, h, s, y, l_idx, t, is_train, is_gpu,
+                updated_outputs=False):
     """Using provided input activations, context functions, and weights,
         returns the result of the DGN layer
 
@@ -79,7 +80,7 @@ def gated_layer(params, hparams, h, s, y, l_idx, is_train, is_gpu, updated_outpu
         # optimizer[].step(0)
         with torch.no_grad():
             params["weights"][l_idx] = params["weights"][l_idx] - \
-                lr(hparams) * w_delta
+                lr(hparams, t) * w_delta
         # Get new layer output with updated weights
         if updated_outputs:
             # weights: [batch_size, layer_dim, input_dim]
@@ -116,7 +117,8 @@ def forward(params, hparams, binary_class, t, s, y, is_train: bool, plotter=None
     h = base_layer(s_bias)
     for l_idx in range(hparams["num_layers_used"]):
         h, params, _ = gated_layer(params, hparams, h, s_bias, y,
-                                   l_idx, is_train, is_gpu=False)
+                                   l_idx, t, is_train, is_gpu=False,
+                                   updated_outputs=False)
     return torch.sigmoid(h), plotter
 
 

@@ -59,7 +59,7 @@ class STEFunction(torch.autograd.Function):
 class StraightThroughEstimator(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input):
-        return torch.sign(input)  # this outputs 1 or -1
+        return 0.5 * torch.sign(input) + 1  # this outputs 1 or -1
 
     @staticmethod
     def backward(ctx, grad_output):

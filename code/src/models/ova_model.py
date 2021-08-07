@@ -15,6 +15,7 @@ class OVAModel(LightningModule):
 
     def __init__(self, **kwargs):
         super().__init__()
+        self.hparams = kwargs  # TODO?
         self.automatic_optimization = False
         self.num_classes = self.hparams["num_classes"]
         self.models = self.get_models(self.hparams["gpu"])
@@ -95,6 +96,20 @@ class OVAModel(LightningModule):
     #         self.added_graph = True
     #     return loss, preds, y
 
+    def training_step(self, batch: Any, batch_idx: int):
+        self.t += 1
+        self.hparams.device = self.device
+        # assert(optimizer_idx is not None)
+        loss, acc = self.forward(batch, is_train=True)
+        # Log
+        self.log("train/loss", loss, on_step=False,
+                 on_epoch=True, prog_bar=False)
+        self.log("train/acc", acc, on_step=False,
+                 on_epoch=True, prog_bar=True)
+        self.log("lr", self.BINARY_MODEL.lr(self.hparams, self.t),
+                 on_step=True, on_epoch=True, prog_bar=True)
+        return {"loss": loss}
+
     def training_epoch_end(self, outputs: List[Any]):
         # log best so far train acc and train loss
         self.metric_hist["train/acc"].append(
@@ -107,8 +122,7 @@ class OVAModel(LightningModule):
                  min(self.metric_hist["train/loss"]), prog_bar=False)
 
     def validation_step(self, batch: Any, batch_idx: int):
-        loss, logits_binary, y_binary = self.forward(batch)
-        acc = self.val_accuracy(logits_binary, y_binary)
+        loss, acc = self.forward(batch, is_train=True)
         self.log("val/loss", loss, on_step=False,
                  on_epoch=True, prog_bar=False)
         self.log("val/acc", acc, on_step=False,
@@ -127,8 +141,7 @@ class OVAModel(LightningModule):
                  min(self.metric_hist["val/loss"]), prog_bar=False)
 
     def test_step(self, batch: Any, batch_idx: int):
-        loss, logits_binary, y_binary = self.forward(batch)
-        acc = self.test_accuracy(logits_binary, y_binary)
+        loss, acc = self.forward(batch, is_train=True)
         self.log("test/loss", loss, on_step=False, on_epoch=True)
         self.log("test/acc", acc, on_step=False, on_epoch=True)
         # return {"loss": loss, "logits_binary": logits_binary, "y_binary": y_binary}

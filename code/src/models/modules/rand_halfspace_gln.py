@@ -1,7 +1,7 @@
 import torch
 
 
-def get_params(s_dim, layer_size, num_subcontexts, ctx_bias=True):
+def get_params(s_dim, layer_size, num_subcontexts):
     """Initialize half-space context layer of specified size and num contexts
 
     Args:
@@ -29,11 +29,13 @@ def calc(s, ctx_weights, bitwise_map, gpu=False):
         [Int * [batch_size, layer_size]]: Context indices for each side
                                             info sample in batch
     """
+    # Get 0 or 1 based on sign of each input sample with respect to each subctx
+    subctx_sign = 0.5 * (torch.sign(calc_raw(s, ctx_weights, bitwise_map)) + 1)
+
     if gpu:
-        return calc_raw(s).float().matmul(
-            bitwise_map.float()).long()
+        return subctx_sign.float().matmul(bitwise_map.float()).long()
     else:
-        calc_raw(s).long().matmul(bitwise_map)
+        return subctx_sign.long().matmul(bitwise_map)
 
 
 def calc_raw(s, ctx_weights, bitwise_map):

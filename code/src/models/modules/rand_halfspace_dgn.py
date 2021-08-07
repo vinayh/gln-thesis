@@ -39,7 +39,7 @@ def calc(s, hyperplanes, gpu=False):
     product = hyperplanes.matmul(s.T).permute(2, 1, 0)
 
     # Straight-through estimator
-    return 0.5*(StraightThroughEstimator.apply(product)+1)
+    return StraightThroughEstimator.apply(product)
     # return (torch.einsum('abc,dc->dba', hyperplanes, s) > 0).bool()
     # return (hyperplanes.matmul(s.permute(1, 0)).permute(2, 1, 0) > 0).bool()
 

@@ -1,6 +1,7 @@
 import torch
 
 # from pytorch_lightning.metrics.classification import Accuracy
+from src.models.ova_model import OVAModel
 from src.utils.helpers import to_one_vs_all
 from typing import Any
 
@@ -14,7 +15,7 @@ class DGNModelNew(OVAModel):
     """
 
     def __init__(self, **kwargs):
-        super().__init__()
+        super().__init__(**kwargs)
         self.t = 0
         self.save_hyperparameters()
         self.criterion = torch.nn.CrossEntropyLoss()
@@ -53,7 +54,7 @@ class DGNModelNew(OVAModel):
             train_autograd_params = self.hparams["train_autograd_params"]
             for l_idx in range(self.hparams["num_layers_used"]):
                 h, p_i, h_updated = BINARY_MODEL.gated_layer(p_i, self.hparams, h,
-                                                             s_bias, y_i, l_idx,
+                                                             s_bias, y_i, l_idx, self.t,
                                                              is_train=is_train, is_gpu=False,
                                                              updated_outputs=train_autograd_params)
                 layer_logits = torch.sigmoid(h)
@@ -94,19 +95,8 @@ class DGNModelNew(OVAModel):
                  on_epoch=True, prog_bar=False)
         self.log("train/acc", acc, on_step=False,
                  on_epoch=True, prog_bar=True)
-        self.log("lr", BINARY_MODEL.lr(self.hparams),
+        self.log("lr", BINARY_MODEL.lr(self.hparams, self.t),
                  on_step=True, on_epoch=True, prog_bar=True)
-
-        # TODO: Use other optimizers besides idx 0
-        # opt = self.optimizers()[0]
-        # opt.zero_grad()
-        # loss = self.compute_loss(batch)
-        # self.manual_backward(loss)
-        # opt.step()
-        # we can return here dict with any tensors
-        # and then read it in some callback or in training_epoch_end() below
-        # return {"loss": loss, "logits_binary": logits_binary, "y_binary": y_binary}
-
         return {"loss": loss}
 
     def forward(self, batch: Any):
