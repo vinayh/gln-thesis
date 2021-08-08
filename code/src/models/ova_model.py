@@ -72,30 +72,6 @@ class OVAModel(LightningModule):
                    for i in range(self.num_classes)]
         return torch.stack(outputs).T.squeeze(0)
 
-    # def step(self, batch: Any, is_train=True):
-    #     """[summary]
-
-    #     Args:
-    #         batch (Any): [description]
-    #         is_train (bool, optional): [description]. Defaults to True.
-
-    #     Returns:
-    #         [type]: [description]
-    #     """
-    #     # with torch.no_grad():
-    #     x, y = batch
-    #     logits = self.forward(x, y, is_train)
-    #     loss = self.criterion(logits, y)
-    #     preds = torch.argmax(logits, dim=1)
-    #     if not self.added_graph:
-    #         ex_inputs = (x, y, torch.tensor(False))
-    #         self.logger.experiment[0].add_graph(
-    #             self.models[0], input_to_model=ex_inputs, verbose=False)
-    #         # make_dot(self.models[0](*ex_inputs)).render(
-    #         #     "attached", format="png")
-    #         self.added_graph = True
-    #     return loss, preds, y
-
     def training_step(self, batch: Any, batch_idx: int):
         self.t += 1
         self.hparams.device = self.device
