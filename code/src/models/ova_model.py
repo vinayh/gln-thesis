@@ -122,7 +122,7 @@ class OVAModel(LightningModule):
                  min(self.metric_hist["train/loss"]), prog_bar=False)
 
     def validation_step(self, batch: Any, batch_idx: int):
-        loss, acc = self.forward(batch, is_train=True)
+        loss, acc = self.forward(batch, is_train=False)
         self.log("val/loss", loss, on_step=False,
                  on_epoch=True, prog_bar=False)
         self.log("val/acc", acc, on_step=False,
@@ -141,7 +141,7 @@ class OVAModel(LightningModule):
                  min(self.metric_hist["val/loss"]), prog_bar=False)
 
     def test_step(self, batch: Any, batch_idx: int):
-        loss, acc = self.forward(batch, is_train=True)
+        loss, acc = self.forward(batch, is_train=False)
         self.log("test/loss", loss, on_step=False, on_epoch=True)
         self.log("test/acc", acc, on_step=False, on_epoch=True)
         # return {"loss": loss, "logits_binary": logits_binary, "y_binary": y_binary}

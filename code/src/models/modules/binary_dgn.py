@@ -35,7 +35,7 @@ def lr(hparams, t):
 
 
 def gated_layer(params, hparams, h, s, y, l_idx, t, is_train, is_gpu,
-                updated_outputs=False):
+                use_autograd=False):
     """Using provided input activations, context functions, and weights,
         returns the result of the DGN layer
 
@@ -82,7 +82,7 @@ def gated_layer(params, hparams, h, s, y, l_idx, t, is_train, is_gpu,
             params["weights"][l_idx] = params["weights"][l_idx] - \
                 lr(hparams, t) * w_delta
         # Get new layer output with updated weights
-        if updated_outputs:
+        if use_autograd:
             # weights: [batch_size, layer_dim, input_dim]
             weights = torch.bmm(c.float().permute(2, 0, 1),
                                 params["weights"][l_idx]).permute(1, 0, 2)
@@ -92,7 +92,7 @@ def gated_layer(params, hparams, h, s, y, l_idx, t, is_train, is_gpu,
     return h_out, params, None
 
 
-def base_layer(s_bias):
+def base_layer(s_bias, layer_size):
     # h = torch.empty_like(s).copy_(s)
     # h = torch.clamp(torch.sigmoid(h), hparams["pred_clipping"], 1 - hparams["pred_clipping"])
     # h = torch.sigmoid(h)
@@ -100,7 +100,8 @@ def base_layer(s_bias):
     return s_bias[:, :-1]
 
 
-def forward(params, hparams, binary_class, t, s, y, is_train: bool, plotter=None):
+def forward(params, hparams, binary_class, t, s, y, is_train=False,
+            use_autograd=False, autograd_fn=None, plotter=None):
     """Calculate output of DGN for input x and side info s
 
     Args:
@@ -110,16 +111,30 @@ def forward(params, hparams, binary_class, t, s, y, is_train: bool, plotter=None
     Returns:
         [Float * [batch_size]]: Batch of DGN outputs (0 < probability < 1)
     """
+    def forward_helper(params, s_bias, is_train):
+        h = base_layer(s_bias, hparams["input_size"])
+        # Gated layers
+        for l_idx in range(hparams["num_layers_used"]):
+            h, params, h_updated = gated_layer(params, hparams, h, s_bias,
+                                               y, l_idx, t, is_train=is_train,
+                                               is_gpu=False,
+                                               use_autograd=use_autograd)
+            if is_train and use_autograd:
+                autograd_fn(h_updated, y, params["opt"][l_idx])
+        return h
+
     if len(s.shape) > 1:
         s = s.flatten(start_dim=1)
     s_bias = torch.cat(
         [s, torch.ones(s.shape[0], 1, device=hparams.device)], dim=1)
-    h = base_layer(s_bias)
-    for l_idx in range(hparams["num_layers_used"]):
-        h, params, _ = gated_layer(params, hparams, h, s_bias, y,
-                                   l_idx, t, is_train, is_gpu=False,
-                                   updated_outputs=False)
-    return torch.sigmoid(h), plotter
+    h = forward_helper(params, s_bias, is_train=is_train)
+    # Add frame to animated plot
+    if is_train and hparams["plot"]:
+        if binary_class == 0 and not (hparams["t"] % 5):
+            plotter.save_data(
+                lambda xy: forward_helper(xy, y=None, is_train=False))
+    # return torch.sigmoid(h), plotter
+    return torch.sigmoid(h)
 
 
 # def configure_optimizers(params):  # Global straight-through, NO neuron updates
