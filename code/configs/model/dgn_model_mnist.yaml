@@ -1,7 +1,7 @@
 _target_: src.models.dgn_model.DGNModel
 
 input_size: 784
-lin1_size: 100
+lin1_size: 10
 lin2_size: 10
 lin3_size: 1
 num_classes: 10
@@ -9,9 +9,10 @@ num_branches: 10
 num_layers_used: 3
 pred_clipping: 0.01
 weight_clipping: 5
-lr: 0.0001
+lr: 0.05
 weight_decay: 0.0005
-train_context: False
+pretrained_ctx: false
 gpu: false
-svm_context: true
+svm_context: false
 plot: false
+train_autograd_params: false

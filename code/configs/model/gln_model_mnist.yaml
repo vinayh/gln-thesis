@@ -1,16 +1,17 @@
 _target_: src.models.gln_model.GLNModel
 
 input_size: 784
-lin1_size: 10
-lin2_size: 5
+lin1_size: 4
+lin2_size: 4
 lin3_size: 1
 num_classes: 10
 num_subcontexts: 4
-num_layers_used: 1
+num_layers_used: 3
 pred_clipping: 0.01
-weight_clipping: 5
+w_clip: 5
 lr: 0.001
 weight_decay: 0.0005
 gpu: false
 svm_context: false
 plot: false
+train_autograd_params: false

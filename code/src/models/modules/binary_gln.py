@@ -137,7 +137,7 @@ def forward(params, hparams, binary_class, t, s, y, is_train=False,
 
     # Add frame to animated plot
     if is_train and hparams["plot"]:
-        if binary_class == 0 and not (hparams["t"] % 5):
+        if binary_class == 0 and not (t % 5):
             plotter.save_data(
                 lambda xy: forward_helper(xy, y=None, is_train=False))
     # return torch.sigmoid(x), plotter

@@ -14,3 +14,4 @@ weight_decay: 0.0005
 gpu: false
 svm_context: false
 plot: true
+train_autograd_params: false

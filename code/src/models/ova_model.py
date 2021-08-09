@@ -82,7 +82,7 @@ class OVAModel(LightningModule):
                  on_epoch=True, prog_bar=False)
         self.log("train/acc", acc, on_step=False,
                  on_epoch=True, prog_bar=True)
-        self.log("lr", self.BINARY_MODEL.lr(self.hparams, self.t),
+        self.log("lr", self.lr(self.hparams, self.t),
                  on_step=True, on_epoch=True, prog_bar=True)
         return {"loss": loss}
 

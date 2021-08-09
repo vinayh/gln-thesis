@@ -21,7 +21,7 @@ class ToyClusteringDataModule(PretrainDataModule):
         fashionmnist: bool = False,
         **kwargs
     ):
-        super().__init__()
+        super().__init__(data_dir=data_dir)
 
         self.dataset_name = 'toyclustering'
         self.data_dir = data_dir
