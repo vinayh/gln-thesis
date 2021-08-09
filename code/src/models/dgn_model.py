@@ -17,13 +17,13 @@ class DGNModel(OVAModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.t = 0
-        self.save_hyperparameters()
         self.criterion = torch.nn.CrossEntropyLoss()
         self.binary_criterion = torch.nn.BCEWithLogitsLoss()
         self.L1_loss = torch.nn.L1Loss(reduction="sum")
         self.params = self.get_model_params()
 
     def get_model_params(self):
+        self.hparams.device = self.device
         X_all, y_all_ova = self.get_plot_data()
         num_neurons = self.num_neurons = (
             self.hparams["input_size"],
@@ -72,6 +72,7 @@ class DGNModel(OVAModel):
         Returns:
             [type]: [description]
         """
+        self.hparams.device = self.device
         x, y = batch
         y_ova = to_one_vs_all(y, self.num_classes, self.device)
         use_autograd = self.hparams["train_autograd_params"]

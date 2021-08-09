@@ -14,15 +14,19 @@ def init_params(num_neurons, hparams, binary_class=0, X_all=None, y_all=None):
                                                    layer_dim,
                                                    hparams["num_branches"],
                                                    ctx_bias=True,
-                                                   pretrained_ctx=hparams["pretrained_ctx"])
+                                                   pretrained_ctx=hparams["pretrained_ctx"],
+                                                   device=hparams.device)
             layer_W = 0.5 * \
-                torch.ones(layer_dim, hparams["num_branches"], input_dim + 1)
+                torch.ones(layer_dim, hparams["num_branches"], input_dim + 1,
+                device=hparams.device)
             ctx_param = torch.nn.Parameter(layer_ctx, requires_grad=True)
             W_param = torch.nn.Parameter(layer_W, requires_grad=True)
         if hparams["gpu"]:
             ctx_param = ctx_param.cuda()
             W_param = W_param.cuda()
-        layer_opt = torch.optim.SGD(params=[ctx_param], lr=0.1)
+        layer_opt = None
+        if hparams["train_autograd_params"]:
+            layer_opt = torch.optim.SGD(params=[ctx_param], lr=0.1)
         ctx.append(ctx_param)
         W.append(W_param)
         opt.append(layer_opt)
@@ -51,7 +55,7 @@ def gated_layer(params, hparams, h, s, y, l_idx, t, is_train, is_gpu,
     # input_dim = hparams["input_size"] + 1
     h = h.detach()
     layer_bias = e / (e+1)
-    h = torch.cat([h, layer_bias * torch.ones(h.shape[0], 1)], dim=1)
+    h = torch.cat([h, layer_bias * torch.ones(h.shape[0], 1, device=hparams.device)], dim=1)
     # assert(input_dim == h.shape[1])
 
     # c: [batch_size, layer_dim]

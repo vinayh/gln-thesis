@@ -15,12 +15,12 @@ class OVAModel(LightningModule):
 
     def __init__(self, **kwargs):
         super().__init__()
-        self.hparams = kwargs  # TODO?
+        self.save_hyperparameters()
+        self.hparams.update(kwargs)  # TODO?
         self.automatic_optimization = False
         self.num_classes = self.hparams["num_classes"]
         self.models = self.get_models(self.hparams["gpu"])
         self.added_graph = False
-        self.hparams.device = self.device
         # Example input array for TensorBoard logger
         self.train_accuracy = Accuracy()
         self.val_accuracy = Accuracy()

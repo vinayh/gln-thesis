@@ -17,7 +17,6 @@ class GLNModel(OVAModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.t = 0
-        self.save_hyperparameters()
         self.criterion = torch.nn.CrossEntropyLoss()
         self.binary_criterion = torch.nn.BCEWithLogitsLoss()
         self.params = self.get_model_params()

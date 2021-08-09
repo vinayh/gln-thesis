@@ -10,4 +10,4 @@ weights_summary: null
 progress_bar_refresh_rate: 10
 
 terminate_on_nan: False
-automatic_optimization: True
+# automatic_optimization: True

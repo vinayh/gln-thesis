@@ -107,6 +107,7 @@ def forward_pass(step_fn, x, y, weights, hyperplanes, learning_rate, update):
   losses, outputs = np.zeros(len(y)), np.zeros(len(y))
   y = np.float64(y)
   for i, (x_i, y_i) in enumerate(zip(x, y)):
+    print(i)
     outputs[i], losses[i] = step_fn(x_i, weights, hyperplanes, target=y_i,
                                     learning_rate=learning_rate, update=update)
   return np.mean(losses), outputs

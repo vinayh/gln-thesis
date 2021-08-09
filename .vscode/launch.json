@@ -31,6 +31,21 @@
             ]
         },
         {
+            "name": "Train DGN - Debug, GPU, MNIST",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": [
+                "trainer=debug_trainer",
+                "model=dgn_model_mnist",
+                "datamodule=mnist_datamodule",
+                "logger=tensorboard",
+                "datamodule.deskew=false",
+                "trainer.gpus=1",
+                "model.gpu=true"
+            ]
+        },
+        {
             "name": "Train DGN - Debug, deskewed MNIST",
             "type": "python",
             "request": "launch",
@@ -40,7 +55,22 @@
                 "model=dgn_model_mnist",
                 "datamodule=mnist_datamodule",
                 "logger=tensorboard",
-                "datamodule.deskew=true"
+                "datamodule.deskew=true",
+            ]
+        },
+        {
+            "name": "Train DGN - Debug, GPU, deskewed MNIST",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": [
+                "trainer=debug_trainer",
+                "model=dgn_model_mnist",
+                "datamodule=mnist_datamodule",
+                "logger=tensorboard",
+                "datamodule.deskew=true",
+                // "trainer.gpus=1",
+                "model.gpu=true"
             ]
         },
         {
