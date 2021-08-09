@@ -9,7 +9,7 @@ num_subcontexts: 4
 num_layers_used: 3
 pred_clipping: 0.01
 w_clip: 5
-lr: 0.001
+lr: 0.20
 weight_decay: 0.0005
 gpu: false
 svm_context: false

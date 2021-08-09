@@ -37,8 +37,8 @@ def init_params(num_neurons, hparams, binary_class=0, X_all=None, y_all=None):
 
 
 def lr(hparams, t):
-    return 0.1
-    # return min(0.1, 0.2/(1.0 + 1e-2 * t))
+    return min(hparams["lr"], hparams["lr"]/(1.0 + 1e-3 * t))
+    # return hparams["lr"]
 
 
 def gated_layer(params, hparams, logit_x, s, y, l_idx, t, is_train, is_gpu=False,

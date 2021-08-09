@@ -14,7 +14,8 @@ def get_params(s_dim, layer_size, num_subcontexts):
                 [Float * [num_subctx, s_dim, layer_size]]: Weights of hyperplanes
     """
     ctx_weights = torch.empty(num_subcontexts, s_dim,
-                              layer_size).normal_(mean=0.5, std=1.0)
+                              layer_size).normal_(mean=0, std=1.0)
+    ctx_weights[:, -1, :].normal_(mean=0, std=0.5)
     return ctx_weights
 
 

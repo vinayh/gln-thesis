@@ -9,7 +9,7 @@ num_branches: 10
 num_layers_used: 3
 pred_clipping: 0.01
 weight_clipping: 5
-lr: 0.05
+lr: 0.10
 weight_decay: 0.0005
 pretrained_ctx: false
 gpu: false

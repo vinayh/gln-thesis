@@ -30,8 +30,8 @@ def init_params(num_neurons, hparams, binary_class=0, X_all=None, y_all=None):
 
 
 def lr(hparams, t):
-    # return min(hparams["lr"], (1.1 * hparams["lr"])/(1.0 + 1e-2 * t))
-    return hparams["lr"]
+    return min(hparams["lr"], hparams["lr"]/(1.0 + 1e-3 * t))
+    # return hparams["lr"]
 
 
 def gated_layer(params, hparams, h, s, y, l_idx, t, is_train, is_gpu,
@@ -64,14 +64,15 @@ def gated_layer(params, hparams, h, s, y, l_idx, t, is_train, is_gpu,
     h_out = torch.bmm(weights, h.unsqueeze(2)).squeeze(2)
     ###
     if is_train:
-        t = y.unsqueeze(1)
+        targets = y.unsqueeze(1)
         r_out = torch.sigmoid(h_out)
         r_out_clipped = torch.clamp(r_out,
                                     min=hparams["pred_clipping"],
                                     max=1-hparams["pred_clipping"])
         # learn_gates: [batch_size, layer_dim]
-        learn_gates = (torch.abs(t - r_out) > hparams["pred_clipping"]).float()
-        w_grad1 = (r_out_clipped - t) * learn_gates
+        learn_gates = (torch.abs(targets - r_out) >
+                       hparams["pred_clipping"]).float()
+        w_grad1 = (r_out_clipped - targets) * learn_gates
         w_grad2 = torch.bmm(w_grad1.unsqueeze(2), h.unsqueeze(1))
         w_delta = torch.bmm(c.float().permute(2, 1, 0),
                             w_grad2.permute(1, 0, 2))
