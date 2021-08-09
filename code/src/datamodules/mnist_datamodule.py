@@ -31,6 +31,7 @@ class MNISTDataModule(PretrainDataModule):
 
         if fashionmnist:
             self.dataset_fn = FashionMNIST
+            print('MNIST DataModule: using Fashion MNIST')
         else:
             self.dataset_fn = MNIST
 

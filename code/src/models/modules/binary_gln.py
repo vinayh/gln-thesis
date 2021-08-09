@@ -13,8 +13,6 @@ from src.utils.gated_plotter import GatedPlotter
 def init_params(num_neurons, hparams, binary_class=0, X_all=None, y_all=None):
     ctx, W, opt = [], [], []
     num_contexts = 2**hparams["num_subcontexts"]
-    bitwise_map = torch.tensor(
-        [2**i for i in range(hparams["num_subcontexts"])])
     for i in range(1, len(num_neurons)):
         with torch.no_grad():
             input_dim, layer_dim = num_neurons[i-1], num_neurons[i]
@@ -24,16 +22,20 @@ def init_params(num_neurons, hparams, binary_class=0, X_all=None, y_all=None):
             layer_W = 0.5 * \
                 torch.ones(
                     layer_dim, num_contexts, input_dim + 1)
+            # TODO: Currently disabled grad to train on multiple GPUs without
+            # error of autograd transferring data across devices
             ctx_param = torch.nn.Parameter(layer_ctx, requires_grad=True)
             W_param = torch.nn.Parameter(layer_W, requires_grad=True)
         if hparams["gpu"]:
             ctx_param = ctx_param.cuda()
             W_param = W_param.cuda()
-        layer_opt = torch.optim.SGD(params=[ctx_param], lr=0.1)
+        layer_opt = None
+        if hparams["train_autograd_params"]:
+            layer_opt = torch.optim.SGD(params=[ctx_param], lr=0.1)
         ctx.append(ctx_param)
         W.append(W_param)
         opt.append(layer_opt)
-    return {"ctx": ctx, "weights": W, "opt": opt, "bmap": bitwise_map}
+    return {"ctx": ctx, "weights": W, "opt": opt}
 
 
 def lr(hparams, t):
@@ -41,7 +43,7 @@ def lr(hparams, t):
     # return hparams["lr"]
 
 
-def gated_layer(params, hparams, logit_x, s, y, l_idx, t, is_train, is_gpu=False,
+def gated_layer(params, hparams, logit_x, s, y, l_idx, t, bmap, is_train, is_gpu=False,
                 use_autograd=False):
     """Using provided input activations, context functions, and weights,
        returns the result of the GLN layer
@@ -59,7 +61,7 @@ def gated_layer(params, hparams, logit_x, s, y, l_idx, t, is_train, is_gpu=False
     layer_dim, _, input_dim = params["weights"][l_idx].shape
     # c: [batch_size, input_dim]
     c = rand_hspace_gln.calc(s, params["ctx"][l_idx],
-                             params["bmap"], hparams["gpu"])
+                             bmap, hparams["gpu"])
     layer_bias = e / (e+1)
     logit_x = torch.cat([logit_x,
                          layer_bias * torch.ones(
@@ -107,7 +109,7 @@ def add_ctx_to_plot(params, hparams, X_all, y_all, xy, add_to_plot_fn):
         return plotter
 
 
-def forward(params, hparams, binary_class, t, s, y, is_train=False,
+def forward(params, hparams, binary_class, t, s, y, bmap, is_train=False,
             use_autograd=False, autograd_fn=None, plotter=None):
     """Calculate output of Gated Linear Network for input x and side info s
 
@@ -123,7 +125,8 @@ def forward(params, hparams, binary_class, t, s, y, is_train=False,
         # Gated layers
         for l_idx in range(hparams["num_layers_used"]):
             x, params, x_updated = gated_layer(params, hparams, x, s_bias,
-                                               y, l_idx, t, is_train=is_train,
+                                               y, l_idx, t, bmap,
+                                               is_train=is_train,
                                                is_gpu=False,
                                                use_autograd=use_autograd)
             if is_train and use_autograd:
@@ -132,7 +135,7 @@ def forward(params, hparams, binary_class, t, s, y, is_train=False,
 
     s = s.flatten(start_dim=1)
     s_bias = torch.cat(
-        [s, torch.ones(s.shape[0], 1, device=hparams["device"])], dim=1)
+        [s, torch.ones(s.shape[0], 1, device=hparams.device)], dim=1)
     x = forward_helper(params, s_bias, is_train=is_train)
 
     # Add frame to animated plot

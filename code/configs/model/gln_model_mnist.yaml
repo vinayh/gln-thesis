@@ -1,8 +1,8 @@
 _target_: src.models.gln_model.GLNModel
 
 input_size: 784
-lin1_size: 4
-lin2_size: 4
+lin1_size: 1000
+lin2_size: 1000
 lin3_size: 1
 num_classes: 10
 num_subcontexts: 4

@@ -1,15 +1,17 @@
 _target_: src.models.dgn_model.DGNModel
 
 input_size: 784
-lin1_size: 2000
+lin1_size: 1000
 lin2_size: 1000
-lin3_size: 1
+lin3_size: 500
+lin4_size: 1
+num_layers_used: 4
+
 num_classes: 10
 num_branches: 10
-num_layers_used: 3
 pred_clipping: 0.01
 weight_clipping: 5
-lr: 0.10
+lr: 0.20
 weight_decay: 0.0005
 pretrained_ctx: false
 gpu: false

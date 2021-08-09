@@ -25,11 +25,19 @@ class DGNModel(OVAModel):
     def get_model_params(self):
         self.hparams.device = self.device
         X_all, y_all_ova = self.get_plot_data()
-        num_neurons = self.num_neurons = (
-            self.hparams["input_size"],
-            self.hparams["lin1_size"],
-            self.hparams["lin2_size"],
-            self.hparams["lin3_size"])
+        if self.hparams["num_layers_used"] == 4:
+            num_neurons = self.num_neurons = (
+                self.hparams["input_size"],
+                self.hparams["lin1_size"],
+                self.hparams["lin2_size"],
+                self.hparams["lin3_size"],
+                self.hparams["lin4_size"])
+        else:
+            num_neurons = self.num_neurons = (
+                self.hparams["input_size"],
+                self.hparams["lin1_size"],
+                self.hparams["lin2_size"],
+                self.hparams["lin3_size"])
         model_params = [BINARY_MODEL.init_params(num_neurons,
                                                  self.hparams,
                                                  binary_class=i,
@@ -85,6 +93,7 @@ class DGNModel(OVAModel):
                                          autograd_fn=self.autograd_fn)
             outputs.append(out_i)
         logits = torch.stack(outputs).T.squeeze(0)
+        # TODO: Fix NaN with 4 layers...
         loss = self.criterion(logits, y)
         acc = self.train_accuracy(torch.argmax(logits, dim=1), y)
         return loss, acc

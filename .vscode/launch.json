@@ -46,6 +46,22 @@
             ]
         },
         {
+            "name": "Train DGN - Debug, GPU, Fashion MNIST",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": [
+                "trainer=debug_trainer",
+                "model=dgn_model_mnist",
+                "datamodule=mnist_datamodule",
+                "logger=tensorboard",
+                "datamodule.deskew=false",
+                "trainer.gpus=1",
+                "model.gpu=true",
+                "datamodule.fashionmnist=true"
+            ]
+        },
+        {
             "name": "Train DGN - Debug, deskewed MNIST",
             "type": "python",
             "request": "launch",
@@ -69,7 +85,7 @@
                 "datamodule=mnist_datamodule",
                 "logger=tensorboard",
                 "datamodule.deskew=true",
-                // "trainer.gpus=1",
+                "trainer.gpus=1",
                 "model.gpu=true"
             ]
         },
@@ -87,6 +103,21 @@
             ]
         },
         {
+            "name": "Train GLN - Debug, GPU, MNIST",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": [
+                "trainer=debug_trainer",
+                "model=gln_model_mnist",
+                "datamodule=mnist_datamodule",
+                "logger=tensorboard",
+                "datamodule.deskew=false",
+                "trainer.gpus=2",
+                "model.gpu=true"
+            ]
+        },
+        {
             "name": "Train GLN - Debug, deskewed MNIST",
             "type": "python",
             "request": "launch",
@@ -97,6 +128,21 @@
                 "datamodule=mnist_datamodule",
                 "logger=tensorboard",
                 "datamodule.deskew=true"
+            ]
+        },
+        {
+            "name": "Train GLN - Debug, GPU, deskewed MNIST",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": [
+                "trainer=debug_trainer",
+                "model=gln_model_mnist",
+                "datamodule=mnist_datamodule",
+                "logger=tensorboard",
+                "datamodule.deskew=true",
+                "trainer.gpus=2",
+                "model.gpu=true"
             ]
         },
         // {

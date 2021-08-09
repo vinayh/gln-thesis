@@ -20,14 +20,24 @@ class GLNModel(OVAModel):
         self.criterion = torch.nn.CrossEntropyLoss()
         self.binary_criterion = torch.nn.BCEWithLogitsLoss()
         self.params = self.get_model_params()
+        self.register_buffer("bmap", torch.tensor([2**i for i in range(self.hparams["num_subcontexts"])]))
 
     def get_model_params(self):
+        self.hparams.device = self.device
         X_all, y_all_ova = self.get_plot_data()
-        num_neurons = self.num_neurons = (
-            self.hparams["input_size"],
-            self.hparams["lin1_size"],
-            self.hparams["lin2_size"],
-            self.hparams["lin3_size"])
+        if self.hparams["num_layers_used"] == 4:
+            num_neurons = self.num_neurons = (
+                self.hparams["input_size"],
+                self.hparams["lin1_size"],
+                self.hparams["lin2_size"],
+                self.hparams["lin3_size"],
+                self.hparams["lin4_size"])
+        else:
+            num_neurons = self.num_neurons = (
+                self.hparams["input_size"],
+                self.hparams["lin1_size"],
+                self.hparams["lin2_size"],
+                self.hparams["lin3_size"])
         model_params = [BINARY_MODEL.init_params(num_neurons,
                                                  self.hparams,
                                                  binary_class=i,
@@ -51,6 +61,7 @@ class GLNModel(OVAModel):
         opt_i_layer.step()
 
     def forward(self, batch: Any, is_train=False):
+        self.hparams.device = self.device
         x, y = batch
         y_ova = to_one_vs_all(y, self.num_classes, self.device)
         use_autograd = self.hparams["train_autograd_params"]
@@ -58,6 +69,7 @@ class GLNModel(OVAModel):
         for i, p_i in enumerate(self.params):  # For each binary model
             out_i = BINARY_MODEL.forward(p_i, self.hparams, i,
                                          self.t, x, y_ova[i],
+                                         bmap=self.bmap,
                                          is_train=is_train,
                                          use_autograd=use_autograd,
                                          autograd_fn=self.autograd_fn)
