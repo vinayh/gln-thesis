@@ -6,6 +6,7 @@ from src.utils.helpers import to_one_vs_all
 from typing import Any
 
 import src.models.modules.binary_dgn as BinaryDGN
+
 BINARY_MODEL = BinaryDGN
 
 
@@ -25,25 +26,17 @@ class DGNModel(OVAModel):
     def get_model_params(self):
         self.hparams.device = self.device
         X_all, y_all_ova = self.get_plot_data()
-        if self.hparams["num_layers_used"] == 4:
-            num_neurons = self.num_neurons = (
-                self.hparams["input_size"],
-                self.hparams["lin1_size"],
-                self.hparams["lin2_size"],
-                self.hparams["lin3_size"],
-                self.hparams["lin4_size"])
-        else:
-            num_neurons = self.num_neurons = (
-                self.hparams["input_size"],
-                self.hparams["lin1_size"],
-                self.hparams["lin2_size"],
-                self.hparams["lin3_size"])
-        model_params = [BINARY_MODEL.init_params(num_neurons,
-                                                 self.hparams,
-                                                 binary_class=i,
-                                                 X_all=X_all,
-                                                 y_all=y_all_ova[i])
-                        for i in range(self.num_classes)]
+        num_neurons = self.num_neurons_tuple(self.hparams)
+        model_params = [
+            BINARY_MODEL.init_params(
+                num_neurons,
+                self.hparams,
+                binary_class=i,
+                X_all=X_all,
+                y_all=y_all_ova[i],
+            )
+            for i in range(self.num_classes)
+        ]
         return model_params
 
     @staticmethod
@@ -86,11 +79,17 @@ class DGNModel(OVAModel):
         use_autograd = self.hparams["train_autograd_params"]
         outputs = []
         for i, p_i in enumerate(self.params):  # For each binary model
-            out_i = BINARY_MODEL.forward(p_i, self.hparams, i,
-                                         self.t, x, y_ova[i],
-                                         is_train=is_train,
-                                         use_autograd=use_autograd,
-                                         autograd_fn=self.autograd_fn)
+            out_i = BINARY_MODEL.forward(
+                p_i,
+                self.hparams,
+                i,
+                self.t,
+                x,
+                y_ova[i],
+                is_train=is_train,
+                use_autograd=use_autograd,
+                autograd_fn=self.autograd_fn,
+            )
             outputs.append(out_i)
         logits = torch.stack(outputs).T.squeeze(0)
         # TODO: Fix NaN with 4 layers...

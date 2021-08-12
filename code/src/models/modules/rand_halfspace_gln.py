@@ -1,7 +1,7 @@
 import torch
 
 
-def get_params(s_dim, layer_size, num_subcontexts):
+def get_params(hparams, layer_size):
     """Initialize half-space context layer of specified size and num contexts
 
     Args:
@@ -13,9 +13,15 @@ def get_params(s_dim, layer_size, num_subcontexts):
     Returns:
                 [Float * [num_subctx, s_dim, layer_size]]: Weights of hyperplanes
     """
-    ctx_weights = torch.empty(num_subcontexts, s_dim,
-                              layer_size).normal_(mean=0, std=1.0)
-    ctx_weights[:, -1, :].normal_(mean=0, std=0.5)
+    s_dim = hparams["input_size"] + 1
+    # pretrained_ctx = hparams["pretrained_ctx"]
+    ctx_weights = torch.empty(hparams["num_subcontexts"], s_dim, layer_size).normal_(
+        mean=0, std=1.0
+    )
+    if hparams["ctx_bias"]:
+        ctx_weights[:, -1, :].normal_(mean=0, std=0.5)
+    else:
+        ctx_weights[:, -1, :] = 0
     return ctx_weights
 
 
@@ -49,10 +55,9 @@ def calc_raw(s, ctx_weights, bitwise_map):
         [Int * [batch_size, layer_size]]: Context indices for each side
                                             info sample in batch
     """
-    ctx_dist = torch.matmul(s.expand(ctx_weights.shape[0],
-                                     s.shape[0],
-                                     s.shape[1]),
-                            ctx_weights)
+    ctx_dist = torch.matmul(
+        s.expand(ctx_weights.shape[0], s.shape[0], s.shape[1]), ctx_weights
+    )
     ctx_results = ctx_dist.permute(1, 2, 0)
     # ctx_results = (torch.einsum('abc,db->dca', self.ctx_weights, s) > 0)
     return ctx_results

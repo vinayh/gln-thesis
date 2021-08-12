@@ -34,6 +34,27 @@ class OVAModel(LightningModule):
             "val/loss": [],
         }
 
+    @staticmethod
+    def num_neurons_tuple(hparams):
+        if hparams["num_layers_used"] == 3:
+            num_neurons = (
+                hparams["input_size"],
+                hparams["lin1_size"],
+                hparams["lin2_size"],
+                hparams["lin3_size"],
+            )
+        elif hparams["num_layers_used"] == 4:
+            num_neurons = (
+                hparams["input_size"],
+                hparams["lin1_size"],
+                hparams["lin2_size"],
+                hparams["lin3_size"],
+                hparams["lin4_size"],
+            )
+        else:
+            raise Exception
+        return num_neurons
+
     # def get_example_input(self):
     #     ex_batch_size = 4
     #     ex_x = torch.rand(
@@ -68,8 +89,10 @@ class OVAModel(LightningModule):
         """
         # with torch.no_grad():
         y_ova = to_one_vs_all(y, self.num_classes, self.device)
-        outputs = [self.models[i].forward(x, y_ova[i], is_train)
-                   for i in range(self.num_classes)]
+        outputs = [
+            self.models[i].forward(x, y_ova[i], is_train)
+            for i in range(self.num_classes)
+        ]
         return torch.stack(outputs).T.squeeze(0)
 
     def training_step(self, batch: Any, batch_idx: int):
@@ -78,43 +101,38 @@ class OVAModel(LightningModule):
         # assert(optimizer_idx is not None)
         loss, acc = self.forward(batch, is_train=True)
         # Log
-        self.log("train/loss", loss, on_step=False,
-                 on_epoch=True, prog_bar=False)
-        self.log("train/acc", acc, on_step=False,
-                 on_epoch=True, prog_bar=True)
-        self.log("lr", self.lr(self.hparams, self.t),
-                 on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
+        self.log("train/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log(
+            "lr",
+            self.lr(self.hparams, self.t),
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+        )
         return {"loss": loss}
 
     def training_epoch_end(self, outputs: List[Any]):
         # log best so far train acc and train loss
-        self.metric_hist["train/acc"].append(
-            self.trainer.callback_metrics["train/acc"])
+        self.metric_hist["train/acc"].append(self.trainer.callback_metrics["train/acc"])
         self.metric_hist["train/loss"].append(
-            self.trainer.callback_metrics["train/loss"])
-        self.log("train/acc_best",
-                 max(self.metric_hist["train/acc"]), prog_bar=False)
-        self.log("train/loss_best",
-                 min(self.metric_hist["train/loss"]), prog_bar=False)
+            self.trainer.callback_metrics["train/loss"]
+        )
+        self.log("train/acc_best", max(self.metric_hist["train/acc"]), prog_bar=False)
+        self.log("train/loss_best", min(self.metric_hist["train/loss"]), prog_bar=False)
 
     def validation_step(self, batch: Any, batch_idx: int):
         loss, acc = self.forward(batch, is_train=False)
-        self.log("val/loss", loss, on_step=False,
-                 on_epoch=True, prog_bar=False)
-        self.log("val/acc", acc, on_step=False,
-                 on_epoch=True, prog_bar=True)
+        self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
+        self.log("val/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
         # return {"loss": loss, "logits_binary": logits_binary, "y_binary": y_binary}
         return {"loss": loss}
 
     def validation_epoch_end(self, outputs: List[Any]):
-        self.metric_hist["val/acc"].append(
-            self.trainer.callback_metrics["val/acc"])
-        self.metric_hist["val/loss"].append(
-            self.trainer.callback_metrics["val/loss"])
-        self.log("val/acc_best",
-                 max(self.metric_hist["val/acc"]), prog_bar=False)
-        self.log("val/loss_best",
-                 min(self.metric_hist["val/loss"]), prog_bar=False)
+        self.metric_hist["val/acc"].append(self.trainer.callback_metrics["val/acc"])
+        self.metric_hist["val/loss"].append(self.trainer.callback_metrics["val/loss"])
+        self.log("val/acc_best", max(self.metric_hist["val/acc"]), prog_bar=False)
+        self.log("val/loss_best", min(self.metric_hist["val/loss"]), prog_bar=False)
 
     def test_step(self, batch: Any, batch_idx: int):
         loss, acc = self.forward(batch, is_train=False)

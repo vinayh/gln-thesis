@@ -18,7 +18,7 @@ def logit_geo_mix(logit_prev_layer, weights):
     return torch.sigmoid(weights.matmul(logit_prev_layer))
 
 
-def to_one_vs_all(targets, num_classes, device='cpu'):
+def to_one_vs_all(targets, num_classes, device="cpu"):
     """[summary]
 
     Args:
@@ -29,9 +29,9 @@ def to_one_vs_all(targets, num_classes, device='cpu'):
     Returns:
         [type]: [description]
     """
-    ova_targets = torch.zeros((num_classes, len(targets)),
-                              dtype=torch.int,
-                              device=device)
+    ova_targets = torch.zeros(
+        (num_classes, len(targets)), dtype=torch.int, device=device
+    )
     for i in range(num_classes):
         ova_targets[i, :][targets == i] = 1
     return ova_targets
@@ -59,7 +59,9 @@ class STEFunction(torch.autograd.Function):
 class StraightThroughEstimator(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input):
-        return 0.5 * torch.sign(input) + 1  # this outputs 1 or -1
+        return torch.heaviside(
+            input, torch.zeros(1).type_as(input)
+        )  # this outputs 0 or 1
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -67,3 +69,7 @@ class StraightThroughEstimator(torch.autograd.Function):
 
 
 # 0.5*(Binary.apply(x) + 1)
+
+
+def nan_inf_in_tensor(x):
+    return torch.sum(torch.isinf(x)) + torch.sum(torch.isnan(x)) > 0

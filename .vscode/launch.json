@@ -43,7 +43,10 @@
                 "datamodule.deskew=false",
                 "trainer.gpus=1",
                 "model.gpu=true"
-            ]
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "5,6,7"
+            }
         },
         {
             "name": "Train DGN - Debug, GPU, Fashion MNIST",
@@ -113,9 +116,12 @@
                 "datamodule=mnist_datamodule",
                 "logger=tensorboard",
                 "datamodule.deskew=false",
-                "trainer.gpus=2",
+                "trainer.gpus=1",
                 "model.gpu=true"
-            ]
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "5,6,7"
+            }
         },
         {
             "name": "Train GLN - Debug, deskewed MNIST",
@@ -141,7 +147,7 @@
                 "datamodule=mnist_datamodule",
                 "logger=tensorboard",
                 "datamodule.deskew=true",
-                "trainer.gpus=2",
+                "trainer.gpus=1",
                 "model.gpu=true"
             ]
         },

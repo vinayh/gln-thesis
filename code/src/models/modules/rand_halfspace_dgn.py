@@ -3,7 +3,7 @@ import torch
 from src.utils.helpers import StraightThroughEstimator
 
 
-def get_params(num_features, layer_size, num_branches, ctx_bias=True, pretrained_ctx=False, device=None):
+def get_params(hparams, layer_size):
     """Return weights for half-space context layer of specified size and num_contexts
 
         Args:
@@ -14,11 +14,18 @@ def get_params(num_features, layer_size, num_branches, ctx_bias=True, pretrained
         Returns:
             [Float * [layer_size, num_branches, num_features]]: Weights of hyperplanes
     """
-    hyperplanes = torch.empty(layer_size, num_branches, num_features, device=device)
-    # hyperplanes = hyperplanes / torch.linalg.norm(
-    #     hyperplanes[:, :, :-1], axis=(1, 2))[:, None, None]
+    num_features = hparams["input_size"] + 1
+    # pretrained_ctx = hparams["pretrained_ctx"]
+    hyperplanes = torch.empty(layer_size, hparams["num_branches"], num_features)
     hyperplanes.normal_(mean=0, std=1.0)
-    hyperplanes[:, :, -1].normal_(mean=0, std=0.5)
+    if hparams["ctx_bias"]:
+        hyperplanes[:, :, -1].normal_(mean=0, std=0.5)
+    else:
+        hyperplanes[:, :, -1] = 0
+    # hyperplanes = (
+    #     hyperplanes
+    #     / torch.linalg.norm(hyperplanes[:, :, :-1], axis=(1, 2))[:, None, None]
+    # )
     return hyperplanes
 
 

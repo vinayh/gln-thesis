@@ -2,23 +2,22 @@ import torch
 from math import e
 
 import src.models.modules.rand_halfspace_dgn as rand_hspace_dgn
+from src.utils.helpers import nan_inf_in_tensor
+
 # from src.utils.gated_plotter import GatedPlotter
+
+LAYER_BIAS = e / (e + 1)
 
 
 def init_params(num_neurons, hparams, binary_class=0, X_all=None, y_all=None):
     ctx, W, opt = [], [], []
     for i in range(1, len(num_neurons)):
         with torch.no_grad():
-            input_dim, layer_dim = num_neurons[i-1], num_neurons[i]
-            layer_ctx = rand_hspace_dgn.get_params(hparams["input_size"] + 1,
-                                                   layer_dim,
-                                                   hparams["num_branches"],
-                                                   ctx_bias=True,
-                                                   pretrained_ctx=hparams["pretrained_ctx"],
-                                                   device=hparams.device)
-            layer_W = 0.5 * \
-                torch.ones(layer_dim, hparams["num_branches"], input_dim + 1,
-                device=hparams.device)
+            input_dim, layer_dim = num_neurons[i - 1], num_neurons[i]
+            layer_ctx = rand_hspace_dgn.get_params(hparams, layer_dim)
+            layer_W = 0.5 * torch.ones(
+                layer_dim, hparams["num_branches"], input_dim + 1, device=hparams.device
+            )
             ctx_param = torch.nn.Parameter(layer_ctx, requires_grad=True)
             W_param = torch.nn.Parameter(layer_W, requires_grad=True)
         if hparams["gpu"]:
@@ -34,12 +33,13 @@ def init_params(num_neurons, hparams, binary_class=0, X_all=None, y_all=None):
 
 
 def lr(hparams, t):
-    return min(hparams["lr"], hparams["lr"]/(1.0 + 1e-3 * t))
-    # return hparams["lr"]
+    if hparams["dynamic_lr"]:
+        return min(hparams["lr"], hparams["lr"] / (1.0 + 1e-3 * t))
+    else:
+        return hparams["lr"]
 
 
-def gated_layer(params, hparams, h, s, y, l_idx, t, is_train, is_gpu,
-                use_autograd=False):
+def gated_layer(params, hparams, h, s, y, l_idx, t, is_train, use_autograd=False):
     """Using provided input activations, context functions, and weights,
         returns the result of the DGN layer
 
@@ -52,61 +52,138 @@ def gated_layer(params, hparams, h, s, y, l_idx, t, is_train, is_gpu,
     Returns:
         [Float * [batch_size, layer_dim]]: Output of DGN layer
     """
-    # input_dim = hparams["input_size"] + 1
-    h = h.detach()
-    layer_bias = e / (e+1)
-    h = torch.cat([h, layer_bias * torch.ones(h.shape[0], 1, device=hparams.device)], dim=1)
-    # assert(input_dim == h.shape[1])
-
+    h = torch.cat([h, LAYER_BIAS * torch.ones_like(h[:, :1])], dim=1)
     # c: [batch_size, layer_dim]
-    c = rand_hspace_dgn.calc(
-        s, params["ctx"][l_idx], is_gpu)
+    c = rand_hspace_dgn.calc(s, params["ctx"][l_idx], hparams.gpu)
     # weights: [batch_size, layer_dim, input_dim]
-    weights = torch.bmm(c.float().permute(2, 0, 1),
-                        params["weights"][l_idx]).permute(1, 0, 2)
+    weights = torch.bmm(c.float().permute(2, 0, 1), params["weights"][l_idx]).permute(
+        1, 0, 2
+    )
     # h_out: [batch_size, layer_dim]
     h_out = torch.bmm(weights, h.unsqueeze(2)).squeeze(2)
-    ###
     if is_train:
         targets = y.unsqueeze(1)
         r_out = torch.sigmoid(h_out)
-        r_out_clipped = torch.clamp(r_out,
-                                    min=hparams["pred_clipping"],
-                                    max=1-hparams["pred_clipping"])
+        r_out_clipped = torch.clamp(
+            r_out, min=hparams["pred_clip"], max=1 - hparams["pred_clip"]
+        )
         # learn_gates: [batch_size, layer_dim]
-        learn_gates = (torch.abs(targets - r_out) >
-                       hparams["pred_clipping"]).float()
+        learn_gates = (torch.abs(targets - r_out) > hparams["pred_clip"]).float()
         w_grad1 = (r_out_clipped - targets) * learn_gates
         w_grad2 = torch.bmm(w_grad1.unsqueeze(2), h.unsqueeze(1))
-        w_delta = torch.bmm(c.float().permute(2, 1, 0),
-                            w_grad2.permute(1, 0, 2))
+        w_delta = torch.bmm(c.float().permute(2, 1, 0), w_grad2.permute(1, 0, 2))
         # assert(w_delta.shape == W[l_idx].shape)
         # TODO delete this: W.grad = w_delta
-        # optimizer[].step(0)
         with torch.no_grad():
-            params["weights"][l_idx] = params["weights"][l_idx] - \
-                lr(hparams, t) * w_delta
+            params["weights"][l_idx] = (
+                params["weights"][l_idx] - lr(hparams, t) * w_delta
+            )
         # Get new layer output with updated weights
         if use_autograd:
             # weights: [batch_size, layer_dim, input_dim]
-            weights = torch.bmm(c.float().permute(2, 0, 1),
-                                params["weights"][l_idx]).permute(1, 0, 2)
+            weights = torch.bmm(
+                c.float().permute(2, 0, 1), params["weights"][l_idx]
+            ).permute(1, 0, 2)
             # h_out_updated: [batch_size, layer_dim]
             h_out_updated = torch.bmm(weights, h.unsqueeze(2)).squeeze(2)
             return h_out, params, h_out_updated
     return h_out, params, None
 
 
-def base_layer(s_bias, layer_size):
+def inv_sigmoid(x):
+    return torch.log(x / (1 - x))
+
+
+def gated_layer2(params, hparams, r, s, y, l_idx, t, is_train, use_autograd=False):
+    """Using provided input activations, context functions, and weights,
+        returns the result of the DGN layer
+
+    Args:
+        r ([Float * [batch_size, input_dim]]): Input activations with sigmoid
+        s ([Float * [batch_size, self.s_dim]]): Batch of side info samples s
+        y ([Float * [batch_size]]): Batch of binary targets
+        l_idx (Int): Layer index for selecting ctx and layer weights
+        is_train (bool): Whether to train/update on this batch or not
+    Returns:
+        [Float * [batch_size, layer_dim]]: Output of DGN layer
+    """
+    curr_lr = lr(hparams, t)
+    # h = torch.cat([h, LAYER_BIAS * torch.ones_like(h[:, :1])], dim=1)
+    r_in = torch.cat([r, torch.sigmoid(torch.ones_like(r[:, :1]))], dim=1)
+    h_in = inv_sigmoid(r_in)
+    # c: [batch_size, layer_dim]
+    c = rand_hspace_dgn.calc(s, params["ctx"][l_idx], hparams.gpu)
+    # weights: [batch_size, layer_dim, input_dim]
+    weights = torch.bmm(c.float().permute(2, 0, 1), params["weights"][l_idx]).permute(
+        1, 0, 2
+    )
+    # h_out: [batch_size, layer_dim]
+    h_out = torch.bmm(weights, h_in.unsqueeze(2)).squeeze(2)
+    r_out_unclipped = torch.sigmoid(h_out)
+    r_out = torch.clamp(
+        r_out_unclipped, min=hparams["pred_clip"], max=1 - hparams["pred_clip"]
+    )
+    if is_train:
+        targets = y.unsqueeze(1)
+        # learn_gates: [batch_size, layer_dim]
+        learn_gates = torch.abs(targets - r_out) > hparams["pred_clip"]
+        # w_grad1: [batch_size, layer_dim]
+        w_grad1 = (r_out - targets) * learn_gates
+        if nan_inf_in_tensor(w_grad1):
+            raise Exception
+        w_grad2 = torch.bmm(w_grad1.unsqueeze(2), h_in.unsqueeze(1))
+        if nan_inf_in_tensor(w_grad2):
+            raise Exception
+        w_delta = torch.bmm(c.float().permute(2, 1, 0), w_grad2.permute(1, 0, 2))
+        if nan_inf_in_tensor(w_delta):
+            raise Exception
+        # assert(w_delta.shape == W[l_idx].shape)
+        # TODO delete this: W.grad = w_delta
+        # optimizer[].step(0)
+        with torch.no_grad():
+            params["weights"][l_idx] = params["weights"][l_idx] - curr_lr * w_delta
+        # Get new layer output with updated weights
+
+        # if use_autograd:
+        #     # weights: [batch_size, layer_dim, input_dim]
+        #     weights = torch.bmm(
+        #         c.float().permute(2, 0, 1), params["weights"][l_idx]
+        #     ).permute(1, 0, 2)
+        #     # h_out_updated: [batch_size, layer_dim]
+        #     h_out_updated = torch.bmm(weights, h.unsqueeze(2)).squeeze(2)
+        #     return r_out, params, h_out_updated
+    return r_out.detach(), params, None
+
+
+def base_layer(s_bias, hparams):
+    # input_size = hparams["input_size"]
     # h = torch.empty_like(s).copy_(s)
-    # h = torch.clamp(torch.sigmoid(h), hparams["pred_clipping"], 1 - hparams["pred_clipping"])
+    # h = torch.clamp(torch.sigmoid(h), hparams["pred_clip"], 1 - hparams["pred_clip"])
     # h = torch.sigmoid(h)
     # return 0.5 * torch.ones_like(s_bias[:, :-1])
-    return s_bias[:, :-1]
+    return s_bias[:, :-1].detach()
 
 
-def forward(params, hparams, binary_class, t, s, y, is_train=False,
-            use_autograd=False, autograd_fn=None, plotter=None):
+def base_layer2(s_bias, hparams):
+    return torch.clamp(
+        torch.sigmoid(s_bias[:, :-1]),
+        min=hparams["pred_clip"],
+        max=1 - hparams["pred_clip"],
+    ).detach()
+
+
+def forward(
+    params,
+    hparams,
+    binary_class,
+    t,
+    s,
+    y,
+    is_train=False,
+    use_autograd=False,
+    autograd_fn=None,
+    plotter=None,
+):
     """Calculate output of DGN for input x and side info s
 
     Args:
@@ -116,28 +193,34 @@ def forward(params, hparams, binary_class, t, s, y, is_train=False,
     Returns:
         [Float * [batch_size]]: Batch of DGN outputs (0 < probability < 1)
     """
+
     def forward_helper(params, s_bias, is_train):
-        h = base_layer(s_bias, hparams["input_size"])
+        h = base_layer2(s_bias, hparams)
         # Gated layers
         for l_idx in range(hparams["num_layers_used"]):
-            h, params, h_updated = gated_layer(params, hparams, h, s_bias,
-                                               y, l_idx, t, is_train=is_train,
-                                               is_gpu=False,
-                                               use_autograd=use_autograd)
+            h, params, h_updated = gated_layer2(
+                params,
+                hparams,
+                h,
+                s_bias,
+                y,
+                l_idx,
+                t,
+                is_train=is_train,
+                use_autograd=use_autograd,
+            )
             if is_train and use_autograd:
                 autograd_fn(h_updated, y, params["opt"][l_idx])
         return h
 
     if len(s.shape) > 1:
         s = s.flatten(start_dim=1)
-    s_bias = torch.cat(
-        [s, torch.ones(s.shape[0], 1, device=hparams.device)], dim=1)
+    s_bias = torch.cat([s, torch.ones(s.shape[0], 1, device=hparams.device)], dim=1)
     h = forward_helper(params, s_bias, is_train=is_train)
     # Add frame to animated plot
     if is_train and hparams["plot"]:
         if binary_class == 0 and not (t % 5):
-            plotter.save_data(
-                lambda xy: forward_helper(xy, y=None, is_train=False))
+            plotter.save_data(lambda xy: forward_helper(xy, y=None, is_train=False))
     # return torch.sigmoid(h), plotter
     return torch.sigmoid(h)
 
