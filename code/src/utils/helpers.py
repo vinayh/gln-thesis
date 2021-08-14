@@ -2,7 +2,10 @@ import torch
 
 
 def logit(x):
-    return torch.log(x / (torch.ones_like(x) - x))
+    if torch.is_tensor(x):
+        return torch.log(x / (1 - x))
+    else:
+        return 1 / (1 - x)
 
 
 def logit_geo_mix(logit_prev_layer, weights):
@@ -16,6 +19,10 @@ def logit_geo_mix(logit_prev_layer, weights):
         [Float]: sigmoid(w * logit(prev_layer)), i.e. output of current neuron
     """
     return torch.sigmoid(weights.matmul(logit_prev_layer))
+
+
+def inv_sigmoid(x):
+    return torch.log(x / (1 - x))
 
 
 def to_one_vs_all(targets, num_classes, device="cpu"):

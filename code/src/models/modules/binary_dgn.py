@@ -2,29 +2,30 @@ import torch
 from math import e
 
 import src.models.modules.rand_halfspace_dgn as rand_hspace_dgn
-from src.utils.helpers import nan_inf_in_tensor
+from src.utils.helpers import nan_inf_in_tensor, inv_sigmoid
 
 # from src.utils.gated_plotter import GatedPlotter
 
 LAYER_BIAS = e / (e + 1)
 
 
-def init_params(num_neurons, hparams, binary_class=0, X_all=None, y_all=None):
+def init_params(layer_sizes, hparams, binary_class=0, X_all=None, y_all=None):
     ctx, W, opt = [], [], []
-    for i in range(1, len(num_neurons)):
+    use_autograd = hparams["train_autograd_params"]
+    for i in range(1, len(layer_sizes)):
         with torch.no_grad():
-            input_dim, layer_dim = num_neurons[i - 1], num_neurons[i]
+            input_dim, layer_dim = layer_sizes[i - 1], layer_sizes[i]
             layer_ctx = rand_hspace_dgn.get_params(hparams, layer_dim)
             layer_W = 0.5 * torch.ones(
                 layer_dim, hparams["num_branches"], input_dim + 1, device=hparams.device
             )
-            ctx_param = torch.nn.Parameter(layer_ctx, requires_grad=True)
-            W_param = torch.nn.Parameter(layer_W, requires_grad=True)
+            ctx_param = torch.nn.Parameter(layer_ctx, requires_grad=use_autograd)
+            W_param = torch.nn.Parameter(layer_W, requires_grad=use_autograd)
         if hparams["gpu"]:
             ctx_param = ctx_param.cuda()
             W_param = W_param.cuda()
         layer_opt = None
-        if hparams["train_autograd_params"]:
+        if use_autograd:
             layer_opt = torch.optim.SGD(params=[ctx_param], lr=0.1)
         ctx.append(ctx_param)
         W.append(W_param)
@@ -90,10 +91,6 @@ def gated_layer(params, hparams, h, s, y, l_idx, t, is_train, use_autograd=False
     return h_out, params, None
 
 
-def inv_sigmoid(x):
-    return torch.log(x / (1 - x))
-
-
 def gated_layer2(params, hparams, r, s, y, l_idx, t, is_train, use_autograd=False):
     """Using provided input activations, context functions, and weights,
         returns the result of the DGN layer
@@ -156,12 +153,7 @@ def gated_layer2(params, hparams, r, s, y, l_idx, t, is_train, use_autograd=Fals
 
 
 def base_layer(s_bias, hparams):
-    # input_size = hparams["input_size"]
-    # h = torch.empty_like(s).copy_(s)
-    # h = torch.clamp(torch.sigmoid(h), hparams["pred_clip"], 1 - hparams["pred_clip"])
-    # h = torch.sigmoid(h)
-    # return 0.5 * torch.ones_like(s_bias[:, :-1])
-    return s_bias[:, :-1].detach()
+    return s_bias[:, :-1]
 
 
 def base_layer2(s_bias, hparams):
@@ -180,7 +172,6 @@ def forward(
     s,
     y,
     is_train=False,
-    use_autograd=False,
     autograd_fn=None,
     plotter=None,
 ):
@@ -193,6 +184,7 @@ def forward(
     Returns:
         [Float * [batch_size]]: Batch of DGN outputs (0 < probability < 1)
     """
+    use_autograd = hparams["train_autograd_params"]
 
     def forward_helper(params, s_bias, is_train):
         h = base_layer2(s_bias, hparams)

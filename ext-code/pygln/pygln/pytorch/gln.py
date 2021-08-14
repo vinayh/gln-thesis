@@ -33,7 +33,7 @@ class ConstantParameter(DynamicParameter):
 
 class PaperLearningRate(DynamicParameter):
     def __init__(self):
-        DynamicParameter.__init__(self, 'paper_learning_rate')
+        DynamicParameter.__init__(self, "paper_learning_rate")
 
     @property
     def value(self):
@@ -41,17 +41,19 @@ class PaperLearningRate(DynamicParameter):
 
 
 class Linear(nn.Module):
-    def __init__(self,
-                 size: int,
-                 input_size: int,
-                 context_size: int,
-                 context_map_size: int,
-                 num_classes: int,
-                 learning_rate: DynamicParameter,
-                 pred_clipping: float,
-                 weight_clipping: float,
-                 bias: bool,
-                 context_bias: bool):
+    def __init__(
+        self,
+        size: int,
+        input_size: int,
+        context_size: int,
+        context_map_size: int,
+        num_classes: int,
+        learning_rate: DynamicParameter,
+        pred_clipping: float,
+        weight_clipping: float,
+        bias: bool,
+        context_bias: bool,
+    ):
         super().__init__()
 
         assert size > 0 and input_size > 0 and context_size > 0
@@ -67,10 +69,9 @@ class Linear(nn.Module):
         self.weight_clipping = weight_clipping
 
         if bias and size > 1:
-            self.bias = torch.empty(
-                (1, 1,
-                 self.num_classes)).uniform_(slogit(self.pred_clipping),
-                                             slogit(1 - self.pred_clipping))
+            self.bias = torch.empty((1, 1, self.num_classes)).uniform_(
+                slogit(self.pred_clipping), slogit(1 - self.pred_clipping)
+            )
             self.size = size - 1
         else:
             self.bias = None
@@ -78,53 +79,53 @@ class Linear(nn.Module):
 
         if context_map_size > 0:
             self._context_maps = torch.as_tensor(
-                np.random.normal(size=(self.num_classes, self.size,
-                                       context_map_size, context_size)),
-                dtype=torch.float32)
+                np.random.normal(
+                    size=(self.num_classes, self.size, context_map_size, context_size)
+                ),
+                dtype=torch.float32,
+            )
 
         # constant values for halfspace gating
         if context_map_size == 0:
             pass
         elif context_bias:
-            context_bias_shape = (self.num_classes, self.size,
-                                  context_map_size, 1)
+            context_bias_shape = (self.num_classes, self.size, context_map_size, 1)
             self._context_bias = torch.tensor(
-                np.random.normal(size=context_bias_shape), dtype=torch.float32)
-            self._context_maps /= torch.norm(self._context_maps,
-                                             dim=-1,
-                                             keepdim=True)
+                np.random.normal(size=context_bias_shape), dtype=torch.float32
+            )
+            self._context_maps /= torch.norm(self._context_maps, dim=-1, keepdim=True)
         else:
             self._context_bias = torch.tensor(0.0)
 
         self.bias = nn.Parameter(self.bias, requires_grad=False)
 
         if context_map_size > 0:
-            self._context_maps = nn.Parameter(self._context_maps,
-                                              requires_grad=False)
-            self._context_bias = nn.Parameter(self._context_bias,
-                                              requires_grad=False)
+            self._context_maps = nn.Parameter(self._context_maps, requires_grad=False)
+            self._context_bias = nn.Parameter(self._context_bias, requires_grad=False)
 
             # array to convert mapped_context_binary context to index
-            self._boolean_converter = nn.Parameter(torch.as_tensor(
-                np.array([[2**i] for i in range(context_map_size)])),
-                                                   requires_grad=False)
+            self._boolean_converter = nn.Parameter(
+                torch.as_tensor(np.array([[2 ** i] for i in range(context_map_size)])),
+                requires_grad=False,
+            )
 
         # weights for the whole layer
-        weights_shape = (self.num_classes, self.size, 2**context_map_size,
-                         input_size)
-        self._weights = nn.Parameter(torch.full(size=weights_shape,
-                                                fill_value=1 / input_size,
-                                                dtype=torch.float32),
-                                     requires_grad=False)
+        weights_shape = (self.num_classes, self.size, 2 ** context_map_size, input_size)
+        self._weights = nn.Parameter(
+            torch.full(
+                size=weights_shape, fill_value=1 / input_size, dtype=torch.float32
+            ),
+            requires_grad=False,
+        )
 
     def predict(self, logit, context, target=None):
         if self.context_map_size > 0:
             # project side information and determine context index
             distances = torch.matmul(self._context_maps, context.T)
             mapped_context_binary = (distances > self._context_bias).int()
-            current_context_indices = torch.sum(mapped_context_binary *
-                                                self._boolean_converter,
-                                                dim=-2)
+            current_context_indices = torch.sum(
+                mapped_context_binary * self._boolean_converter, dim=-2
+            )
         else:
             current_context_indices = torch.zeros(
                 self.num_classes, self.size, 1, dtype=torch.int64
@@ -133,42 +134,55 @@ class Linear(nn.Module):
         # select all context across all neurons in layer
         current_selected_weights = self._weights[
             torch.arange(self.num_classes).reshape(-1, 1, 1),
-            torch.arange(self.size).reshape(1, -1, 1
-                                            ), current_context_indices, :]
+            torch.arange(self.size).reshape(1, -1, 1),
+            current_context_indices,
+            :,
+        ]
 
         if logit.ndim == 2:
             logit = torch.unsqueeze(logit, dim=-1)
 
-        output_logits = torch.clamp(torch.matmul(
-            current_selected_weights,
-            torch.unsqueeze(logit.T, dim=-3)).diagonal(dim1=-2, dim2=-1),
-                                    min=slogit(self.pred_clipping),
-                                    max=slogit(1 - self.pred_clipping)).T
+        output_logits = torch.clamp(
+            torch.matmul(
+                current_selected_weights, torch.unsqueeze(logit.T, dim=-3)
+            ).diagonal(dim1=-2, dim2=-1),
+            min=slogit(self.pred_clipping),
+            max=slogit(1 - self.pred_clipping),
+        ).T
 
         if target is not None:
             sigmoids = torch.sigmoid(output_logits)
             # compute update
             diff = sigmoids - torch.unsqueeze(target, dim=1)
-            update_values = self.learning_rate.value * torch.unsqueeze(
-                diff, dim=-1) * torch.unsqueeze(logit.permute(0, 2, 1), dim=1)
-            self._weights[torch.arange(self.num_classes).reshape(-1, 1, 1),
-                          torch.arange(self.size).reshape(1, -1, 1),
-                          current_context_indices, :] = torch.clamp(
-                              current_selected_weights -
-                              update_values.permute(2, 1, 0, 3),
-                              -self.weight_clipping, self.weight_clipping)
+            update_values = (
+                self.learning_rate.value
+                * torch.unsqueeze(diff, dim=-1)
+                * torch.unsqueeze(logit.permute(0, 2, 1), dim=1)
+            )
+            self._weights[
+                torch.arange(self.num_classes).reshape(-1, 1, 1),
+                torch.arange(self.size).reshape(1, -1, 1),
+                current_context_indices,
+                :,
+            ] = torch.clamp(
+                current_selected_weights - update_values.permute(2, 1, 0, 3),
+                -self.weight_clipping,
+                self.weight_clipping,
+            )
 
         if self.bias is not None:
-            bias_append = torch.cat([self.bias] * output_logits.shape[0],
-                                    dim=0)
+            bias_append = torch.cat([self.bias] * output_logits.shape[0], dim=0)
             output_logits = torch.cat([bias_append, output_logits], dim=1)
 
         return output_logits
 
     def extra_repr(self):
-        return 'input_size={}, neurons={}, context_map_size={}, bias={}'.format(
-            self._weights.size(3), self._weights.size(1),
-            self._context_maps.size(2), self.bias)
+        return "input_size={}, neurons={}, context_map_size={}, bias={}".format(
+            self._weights.size(3),
+            self._weights.size(1),
+            self._context_maps.size(2),
+            self.bias,
+        )
 
 
 class GLN(nn.Module, GLNBase):
@@ -191,54 +205,77 @@ class GLN(nn.Module, GLNBase):
         pred_clipping (0.0 < float < 0.5): Clip predictions into [p, 1 - p] at each layer.
         weight_clipping (float > 0.0): Clip weights into [-w, w] after each update.
     """
-    def __init__(self,
-                 layer_sizes: Sequence[int],
-                 input_size: int,
-                 num_classes: int = 2,
-                 context_map_size: int = 4,
-                 bias: bool = True,
-                 context_bias: bool = False,
-                 base_predictor: Optional[
-                     Callable[[np.ndarray], np.ndarray]] = None,
-                 learning_rate: Union[float, DynamicParameter] = 1e-3,
-                 pred_clipping: float = 1e-3,
-                 weight_clipping: float = 5.0):
+
+    def __init__(
+        self,
+        layer_sizes: Sequence[int],
+        input_size: int,
+        num_classes: int = 2,
+        context_map_size: int = 4,
+        bias: bool = True,
+        context_bias: bool = False,
+        base_predictor: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+        learning_rate: Union[float, DynamicParameter] = 1e-3,
+        pred_clipping: float = 1e-3,
+        weight_clipping: float = 5.0,
+    ):
 
         nn.Module.__init__(self)
-        GLNBase.__init__(self, layer_sizes, input_size, num_classes,
-                         context_map_size, bias, context_bias, base_predictor,
-                         learning_rate, pred_clipping, weight_clipping)
+        GLNBase.__init__(
+            self,
+            layer_sizes,
+            input_size,
+            num_classes,
+            context_map_size,
+            bias,
+            context_bias,
+            base_predictor,
+            learning_rate,
+            pred_clipping,
+            weight_clipping,
+        )
 
         # Initialize layers
         self.layers = nn.ModuleList()
         previous_size = self.base_pred_size
 
         if isinstance(learning_rate, float):
-            self.learning_rate = ConstantParameter(learning_rate,
-                                                   'learning_rate')
+            self.learning_rate = ConstantParameter(learning_rate, "learning_rate")
         elif isinstance(learning_rate, DynamicParameter):
             self.learning_rate = learning_rate
         else:
-            raise ValueError('Invalid learning rate')
+            raise ValueError("Invalid learning rate")
 
         if bias:
-            self.base_bias = np.random.uniform(low=slogit(pred_clipping),
-                                               high=slogit(1 - pred_clipping))
-        for size in (self.layer_sizes + (1,)):
-            layer = Linear(size, previous_size, self.input_size,
-                           self.context_map_size, self.num_classes,
-                           self.learning_rate, self.pred_clipping,
-                           self.weight_clipping, self.bias, self.context_bias)
+            self.base_bias = np.random.uniform(
+                low=slogit(pred_clipping), high=slogit(1 - pred_clipping)
+            )
+        for size in self.layer_sizes + (1,):
+            layer = Linear(
+                size,
+                previous_size,
+                self.input_size,
+                self.context_map_size,
+                self.num_classes,
+                self.learning_rate,
+                self.pred_clipping,
+                self.weight_clipping,
+                self.bias,
+                self.context_bias,
+            )
             self.layers.append(layer)
             previous_size = size
 
         if torch.cuda.is_available():
+            print("Using CUDA")
             self.cuda()
 
-    def predict(self,
-                input: np.ndarray,
-                target: Optional[np.ndarray] = None,
-                return_probs: bool = False) -> np.ndarray:
+    def predict(
+        self,
+        input: np.ndarray,
+        target: Optional[np.ndarray] = None,
+        return_probs: bool = False,
+    ) -> np.ndarray:
         """
         Predict the class for the given inputs, and optionally update the weights.
 
@@ -253,6 +290,7 @@ class GLN(nn.Module, GLNBase):
             Predicted class per input instance (bool, or int if num_classes given),
             or classification probabilities if return_probs set.
         """
+        input = torch.tensor(input, dtype=torch.float32)
         if input.ndim == 1:
             input = torch.unsqueeze(input, dim=0)
 
@@ -260,8 +298,10 @@ class GLN(nn.Module, GLNBase):
         base_preds = self.base_predictor(input)
 
         # Default data transform
-        input = torch.tensor(input, dtype=torch.float32)
-        base_preds = torch.tensor(base_preds, dtype=torch.float32)
+        if not torch.is_tensor(base_preds):
+            base_preds = torch.tensor(base_preds, dtype=torch.float32)
+        # input = input.clone().detach().float()
+        # base_preds = base_preds.clone().detach().float()
         if target is not None:
             target = torch.tensor(target)
         if torch.cuda.is_available():
@@ -280,18 +320,16 @@ class GLN(nn.Module, GLNBase):
                 target = target[:, 1:]
 
         # Base logits
-        base_preds = torch.clamp(base_preds,
-                                 min=self.pred_clipping,
-                                 max=(1.0 - self.pred_clipping))
+        base_preds = torch.clamp(
+            base_preds, min=self.pred_clipping, max=(1.0 - self.pred_clipping)
+        )
         logits = torch.log(base_preds / (1.0 - base_preds))
         if self.bias:
             logits[:, 0] = self.base_bias
 
         # Layers
         for layer in self.layers:
-            logits = layer.predict(logit=logits,
-                                   context=context,
-                                   target=target)
+            logits = layer.predict(logit=logits, context=context, target=target)
 
         logits = torch.squeeze(logits, dim=1)
         if self.num_classes == 2:
@@ -309,5 +347,6 @@ class GLN(nn.Module, GLNBase):
         return output.numpy()
 
     def extra_repr(self):
-        return 'num_classes={}, num_layers={}'.format(self.num_classes,
-                                                      len(self.layers))
+        return "num_classes={}, num_layers={}".format(
+            self.num_classes, len(self.layers)
+        )

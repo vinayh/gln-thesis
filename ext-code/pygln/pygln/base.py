@@ -7,10 +7,12 @@ class OnlineUpdateModel(ABC):
     """Base class for online-update models, shared by all backend implementations."""
 
     @abstractmethod
-    def predict(self,
-                input: np.ndarray,
-                target: Optional[np.ndarray] = None,
-                return_probs: bool = False) -> np.ndarray:
+    def predict(
+        self,
+        input: np.ndarray,
+        target: Optional[np.ndarray] = None,
+        return_probs: bool = False,
+    ) -> np.ndarray:
         """
         Predict the class for the given inputs, and optionally update the weights.
 
@@ -48,18 +50,19 @@ class GLNBase(OnlineUpdateModel):
         weight_clipping (float > 0.0): Clip weights into [-w, w] after each update.
     """
 
-    def __init__(self,
-                 layer_sizes: Sequence[int],
-                 input_size: int,
-                 num_classes: int = 2,
-                 context_map_size: int = 4,
-                 bias: bool = True,
-                 context_bias: bool = False,
-                 base_predictor: Optional[Callable[[
-                     np.ndarray], np.ndarray]] = None,
-                 learning_rate: float = 1e-3,
-                 pred_clipping: float = 1e-3,
-                 weight_clipping: float = 5.0):
+    def __init__(
+        self,
+        layer_sizes: Sequence[int],
+        input_size: int,
+        num_classes: int = 2,
+        context_map_size: int = 4,
+        bias: bool = True,
+        context_bias: bool = False,
+        base_predictor: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+        learning_rate: float = 1e-3,
+        pred_clipping: float = 1e-3,
+        weight_clipping: float = 5.0,
+    ):
         super().__init__()
 
         assert all(size > 0 for size in layer_sizes)
@@ -79,11 +82,13 @@ class GLNBase(OnlineUpdateModel):
         self.context_bias = bool(context_bias)
 
         if base_predictor is None:
-            # self.base_predictor = (
-            #     lambda x: (x - x.min(axis=1, keepdims=True)) /
-            #     (x.max(axis=1, keepdims=True) - x.min(axis=1, keepdims=True))
-            # )
-            self.base_predictor = (lambda x: x)
+            self.base_predictor = lambda x: (
+                x - x.min(axis=1, keepdims=True).values
+            ) / (
+                x.max(axis=1, keepdims=True).values
+                - x.min(axis=1, keepdims=True).values
+            )
+            # self.base_predictor = lambda x: x
             self.base_pred_size = self.input_size
         else:
             self.base_predictor = base_predictor

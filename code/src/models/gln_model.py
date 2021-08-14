@@ -29,10 +29,10 @@ class GLNModel(OVAModel):
     def get_model_params(self):
         self.hparams.device = self.device
         X_all, y_all_ova = self.get_plot_data()
-        num_neurons = self.num_neurons_tuple(self.hparams)
+        layer_sizes = self.layer_sizes_tuple(self.hparams)
         model_params = [
             BINARY_MODEL.init_params(
-                num_neurons,
+                layer_sizes,
                 self.hparams,
                 binary_class=i,
                 X_all=X_all,
@@ -60,7 +60,6 @@ class GLNModel(OVAModel):
         self.hparams.device = self.device
         x, y = batch
         y_ova = to_one_vs_all(y, self.num_classes, self.device)
-        use_autograd = self.hparams["train_autograd_params"]
         outputs = []
         for i, p_i in enumerate(self.params):  # For each binary model
             out_i = BINARY_MODEL.forward(
@@ -72,7 +71,6 @@ class GLNModel(OVAModel):
                 y_ova[i],
                 bmap=self.bmap,
                 is_train=is_train,
-                use_autograd=use_autograd,
                 autograd_fn=self.autograd_fn,
             )
             outputs.append(out_i)

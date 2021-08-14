@@ -149,7 +149,10 @@
                 "datamodule.deskew=true",
                 "trainer.gpus=1",
                 "model.gpu=true"
-            ]
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "5,6,7"
+            }
         },
         // {
         //     "name": "Train DGNChain - Debug, toy clustering",

@@ -35,16 +35,16 @@ class OVAModel(LightningModule):
         }
 
     @staticmethod
-    def num_neurons_tuple(hparams):
+    def layer_sizes_tuple(hparams):
         if hparams["num_layers_used"] == 3:
-            num_neurons = (
+            layer_sizes = (
                 hparams["input_size"],
                 hparams["lin1_size"],
                 hparams["lin2_size"],
                 hparams["lin3_size"],
             )
         elif hparams["num_layers_used"] == 4:
-            num_neurons = (
+            layer_sizes = (
                 hparams["input_size"],
                 hparams["lin1_size"],
                 hparams["lin2_size"],
@@ -53,7 +53,7 @@ class OVAModel(LightningModule):
             )
         else:
             raise Exception
-        return num_neurons
+        return layer_sizes
 
     # def get_example_input(self):
     #     ex_batch_size = 4
