@@ -5,7 +5,7 @@ def logit(x):
     if torch.is_tensor(x):
         return torch.log(x / (1 - x))
     else:
-        return 1 / (1 - x)
+        return torch.log(torch.tensor(x / (1 - x)))
 
 
 def logit_geo_mix(logit_prev_layer, weights):

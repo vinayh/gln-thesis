@@ -5,19 +5,19 @@ from scipy.ndimage import interpolation
 ###################################################
 # adopted from https://fsix.github.io/mnist/
 def moments(image):
-    c0, c1 = np.mgrid[:image.shape[0], :
-                      image.shape[1]]  # A trick in numPy to create a mesh grid
+    c0, c1 = np.mgrid[
+        : image.shape[0], : image.shape[1]
+    ]  # A trick in numPy to create a mesh grid
     totalImage = np.sum(image)  # sum of pixels
     m0 = np.sum(c0 * image) / totalImage  # mu_x
     m1 = np.sum(c1 * image) / totalImage  # mu_y
-    m00 = np.sum((c0 - m0)**2 * image) / totalImage  # var(x)
-    m11 = np.sum((c1 - m1)**2 * image) / totalImage  # var(y)
+    m00 = np.sum((c0 - m0) ** 2 * image) / totalImage  # var(x)
+    m11 = np.sum((c1 - m1) ** 2 * image) / totalImage  # var(y)
     m01 = np.sum((c0 - m0) * (c1 - m1) * image) / totalImage  # covariance(x,y)
-    mu_vector = np.array([m0, m1
-                          ])  # Notice that these are \mu_x, \mu_y respectively
+    mu_vector = np.array([m0, m1])  # Notice that these are \mu_x, \mu_y respectively
     covariance_matrix = np.array(
-        [[m00, m01],
-         [m01, m11]])  # Do you see a similarity between the covariance matrix
+        [[m00, m01], [m01, m11]]
+    )  # Do you see a similarity between the covariance matrix
     return mu_vector, covariance_matrix
 
 
@@ -40,22 +40,32 @@ def deskewAll(X):
 ###################################################
 
 
-def get_mnist(deskewed=True):
-    from torchvision.datasets import MNIST
-
-    trainset = MNIST('./data', train=True, download=True)
+def get_dataset(dataset, deskewed=True):
+    trainset = dataset("./data", train=True, download=True)
     X_train = trainset.data.numpy().reshape(60000, -1).astype(np.float) / 255
     if deskewed:
         X_train = deskewAll(X_train)
     y_train = trainset.targets.numpy()
 
-    testset = MNIST('./data', train=False, download=True)
+    testset = dataset("./data", train=False, download=True)
     X_test = testset.data.numpy().reshape(10000, -1).astype(np.float) / 255
     if deskewed:
         X_test = deskewAll(X_test)
     y_test = testset.targets.numpy()
 
     return X_train, y_train, X_test, y_test
+
+
+def get_mnist(deskewed=True):
+    from torchvision.datasets import MNIST
+
+    return get_dataset(MNIST, deskewed)
+
+
+def get_fashionmnist(deskewed=True):
+    from torchvision.datasets import FashionMNIST
+
+    return get_dataset(FashionMNIST, deskewed)
 
 
 def shuffle_data(X, y):
@@ -65,11 +75,7 @@ def shuffle_data(X, y):
     return X[permutation, :], y[permutation]
 
 
-def evaluate_mnist(model,
-                   deskewed=True,
-                   batch_size=1,
-                   num_epochs=1,
-                   mnist_class=None):
+def evaluate_mnist(model, deskewed=True, batch_size=1, num_epochs=1, mnist_class=None):
     from tqdm import tqdm
 
     # get MNIST data as numpy arrays

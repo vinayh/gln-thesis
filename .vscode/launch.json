@@ -45,7 +45,7 @@
                 "model.gpu=true"
             ],
             "env": {
-                "CUDA_VISIBLE_DEVICES": "5,6,7"
+                "CUDA_VISIBLE_DEVICES": "6,7"
             }
         },
         {
@@ -124,6 +124,25 @@
             }
         },
         {
+            "name": "Train GLN - Debug, GPU, FashionMNIST",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": [
+                "trainer=debug_trainer",
+                "model=gln_model_mnist",
+                "datamodule=mnist_datamodule",
+                "logger=tensorboard",
+                "datamodule.deskew=false",
+                "datamodule.fashionmnist=true",
+                "trainer.gpus=1",
+                "model.gpu=true"
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "5,6,7"
+            }
+        },
+        {
             "name": "Train GLN - Debug, deskewed MNIST",
             "type": "python",
             "request": "launch",
@@ -154,23 +173,14 @@
                 "CUDA_VISIBLE_DEVICES": "5,6,7"
             }
         },
-        // {
-        //     "name": "Train DGNChain - Debug, toy clustering",
-        //     "type": "python",
-        //     "request": "launch",
-        //     "program": "${workspaceFolder}/code/run.py",
-        //     "args": [
-        //         "trainer=debug_trainer",
-        //         "model=dgn_chain_model_toy_clustering",
-        //         "datamodule=toy_clustering_datamodule",
-        //         "logger=tensorboard"
-        //     ]
-        // },
         {
             "type": "python",
             "request": "launch",
             "name": "Current File",
-            "program": "${file}"
+            "program": "${file}",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "5,6,7"
+            }
         }
     ]
 }

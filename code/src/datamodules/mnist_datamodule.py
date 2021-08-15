@@ -12,6 +12,14 @@ from src.datamodules.pretrain_datamodule import PretrainDataModule
 # SEED = 42
 SEED = 17
 
+transforms_deskew = transforms.Compose(
+    [transforms.ToTensor(), transforms.Lambda(deskew_fn), transforms.ToTensor(),]
+)
+
+transforms_normalize = transforms.Compose(
+    [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+)
+
 
 class MNISTDataModule(PretrainDataModule):
     def __init__(
@@ -40,17 +48,9 @@ class MNISTDataModule(PretrainDataModule):
 
         if deskew:
             print("MNIST DataModule: deskewing enabled")
-            self.transforms = transforms.Compose(
-                [
-                    transforms.ToTensor(),
-                    transforms.Lambda(deskew_fn),
-                    transforms.ToTensor(),
-                ]
-            )
+            self.transforms = transforms_deskew
         else:
-            self.transforms = transforms.Compose(
-                [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-            )
+            self.transforms = transforms.Compose([transforms.ToTensor()])
 
         # self.dims is returned when you call datamodule.size()
         self.dims = (1, 28, 28)

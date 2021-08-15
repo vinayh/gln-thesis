@@ -82,13 +82,14 @@ class GLNBase(OnlineUpdateModel):
         self.context_bias = bool(context_bias)
 
         if base_predictor is None:
-            self.base_predictor = lambda x: (
-                x - x.min(axis=1, keepdims=True).values
-            ) / (
-                x.max(axis=1, keepdims=True).values
-                - x.min(axis=1, keepdims=True).values
-            )
-            # self.base_predictor = lambda x: x
+            # self.base_predictor = lambda x: (
+            #     x - x.min(axis=1, keepdims=True).values
+            # ) / (
+            #     x.max(axis=1, keepdims=True).values
+            #     - x.min(axis=1, keepdims=True).values
+            # )
+            # TODO: Compare base predictors
+            self.base_predictor = lambda x: x
             self.base_pred_size = self.input_size
         else:
             self.base_predictor = base_predictor
