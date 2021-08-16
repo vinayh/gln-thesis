@@ -23,22 +23,23 @@ def init_params(layer_sizes, hparams, binary_class=0, X_all=None, y_all=None):
         base_bias = torch.random.uniform(low=logit(p_clip), high=logit(1 - p_clip))
     # Params for gated layers
     for i in range(1, len(layer_sizes)):
-        with torch.no_grad():
-            input_dim, layer_dim = layer_sizes[i - 1] + 1, layer_sizes[i]
-            layer_ctx = rand_hspace_gln.get_params(hparams, layer_dim)
-            layer_W = torch.ones(layer_dim, num_contexts, input_dim) / input_dim
-            layer_bias = torch.empty(1, 1).uniform_(logit(p_clip), logit(1 - p_clip))
-            # TODO: Currently disabled grad to train on multiple GPUs without
-            # error of autograd transferring data across devices
-            ctx_param = torch.nn.Parameter(layer_ctx, requires_grad=use_autograd)
-            W_param = torch.nn.Parameter(layer_W, requires_grad=use_autograd)
-            bias_param = torch.nn.Parameter(layer_bias, requires_grad=use_autograd)
+        # input_dim, layer_dim = layer_sizes[i - 1] + 1, layer_sizes[i]
+        input_dim, layer_dim = layer_sizes[i - 1], layer_sizes[i]
+        layer_ctx = rand_hspace_gln.get_params(hparams, layer_dim)
+        layer_W = torch.ones(layer_dim, num_contexts, input_dim) / input_dim
+        layer_bias = torch.empty(1, 1).uniform_(logit(p_clip), logit(1 - p_clip))
+        # TODO: Currently disabled grad to train on multiple GPUs without
+        # error of autograd transferring data across devices
+        ctx_param = torch.nn.Parameter(layer_ctx, requires_grad=False)
+        W_param = torch.nn.Parameter(layer_W, requires_grad=False)
+        bias_param = torch.nn.Parameter(layer_bias, requires_grad=False)
         if hparams["gpu"]:
             ctx_param = ctx_param.cuda()
             W_param = W_param.cuda()
             bias_param = bias_param.cuda()
+        # ctx_param = torch.nn.Parameter(layer_ctx, requires_grad=use_autograd)
         layer_opt = (
-            torch.optim.SGD(params=[ctx_param], lr=0.1) if use_autograd else None
+            torch.optim.SGD(params=[layer_ctx], lr=0.1) if use_autograd else None
         )
         ctx.append(ctx_param)
         W.append(W_param)
@@ -75,18 +76,14 @@ def gated_layer(
     Returns:
         [Float * [batch_size, output_layer_dim]]: Output of GLN layer
     """
+    s = s[:, :-1]  # TODO: bias
     batch_size = s.shape[0]
     layer_dim, _, input_dim = params["weights"][l_idx].shape
     # c: [batch_size, input_dim]
     c = rand_hspace_gln.calc(s, params["ctx"][l_idx], bmap, hparams["gpu"])
     layer_bias = e / (e + 1)
-    logit_x = torch.cat(
-        [
-            logit_x,
-            layer_bias * torch.ones(logit_x.shape[0], 1, device=hparams["device"]),
-        ],
-        dim=1,
-    )
+    # TODO: bias
+    # logit_x = torch.cat([logit_x, layer_bias * torch.ones_like(logit_x[:, :1])], dim=1)
     if nan_inf_in_tensor(logit_x):
         raise Exception
     # w_ctx: [batch_size, input_dim, output_layer_dim]
@@ -124,15 +121,7 @@ def gated_layer(
         #  TODO: Try adding layer_bias here to see if it helps
         if use_autograd:
             # w_ctx: [batch_size, input_dim, output_layer_dim]
-            w_ctx_updated = torch.stack(
-                [
-                    params["weights"][l_idx][range(layer_dim), c[j], :]
-                    for j in range(batch_size)
-                ]
-            )
-            logit_x_out_updated = torch.bmm(
-                w_ctx_updated, logit_x.unsqueeze(2)
-            ).flatten(
+            logit_x_out_updated = torch.bmm(w_new, logit_x.unsqueeze(2)).flatten(
                 start_dim=1
             )  # [batch_size, output_layer_dim]
             return logit_x_out, params, logit_x_out_updated
@@ -141,14 +130,12 @@ def gated_layer(
 
 def base_layer(params, hparams, s_bias):
     # TODO: Try using base_bias params to see if it helps
-    logit_x_out = logit(
-        torch.clamp(s_bias, min=hparams["pred_clip"], max=1 - hparams["pred_clip"])
-    )
+    p_clip = hparams["pred_clip"]
+    logit_x_out = logit(torch.clamp(s_bias, min=p_clip, max=1 - p_clip))
     if hparams["base_bias"]:
-        logit_x_out[:, -1] = params["base_bias"]
+        return torch.cat([logit_x_out[:, :-1], params["base_bias"]])
     else:
-        logit_x_out = logit_x_out[:, :-1]
-    return logit_x_out
+        return logit_x_out[:, :-1]
 
 
 def add_ctx_to_plot(params, hparams, X_all, y_all, xy, add_to_plot_fn):
@@ -202,11 +189,12 @@ def forward(
                 use_autograd=use_autograd,
             )
             if is_train and use_autograd:
-                autograd_fn(x_updated, y, params["opt"][l_idx])
+                # TODO: x_updated?
+                autograd_fn(x, y, params["opt"][l_idx])
         return x
 
     s = s.flatten(start_dim=1)
-    s_bias = torch.cat([s, torch.ones(s.shape[0], 1, device=hparams.device)], dim=1)
+    s_bias = torch.cat([s, torch.ones_like(s[:, :1])], dim=1)
     x = forward_helper(params, s_bias, is_train=is_train)
 
     # Add frame to animated plot

@@ -23,4 +23,4 @@ pretrained_ctx: false
 gpu: false
 svm_context: false
 plot: false
-train_autograd_params: false
+train_autograd_params: true

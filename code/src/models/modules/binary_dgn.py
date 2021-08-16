@@ -13,20 +13,18 @@ def init_params(layer_sizes, hparams, binary_class=0, X_all=None, y_all=None):
     ctx, W, opt = [], [], []
     use_autograd = hparams["train_autograd_params"]
     for i in range(1, len(layer_sizes)):
-        with torch.no_grad():
-            input_dim, layer_dim = layer_sizes[i - 1], layer_sizes[i]
-            layer_ctx = rand_hspace_dgn.get_params(hparams, layer_dim)
-            layer_W = 0.5 * torch.ones(
-                layer_dim, hparams["num_branches"], input_dim + 1, device=hparams.device
-            )
-            ctx_param = torch.nn.Parameter(layer_ctx, requires_grad=use_autograd)
-            W_param = torch.nn.Parameter(layer_W, requires_grad=use_autograd)
+        input_dim, layer_dim = layer_sizes[i - 1], layer_sizes[i]
+        layer_ctx = rand_hspace_dgn.get_params(hparams, layer_dim)
+        layer_W = 0.5 * torch.ones(
+            layer_dim, hparams["num_branches"], input_dim + 1, device=hparams.device
+        )
+        ctx_param = torch.nn.Parameter(layer_ctx, requires_grad=use_autograd)
+        W_param = torch.nn.Parameter(layer_W, requires_grad=False)
         if hparams["gpu"]:
-            ctx_param = ctx_param.cuda()
             W_param = W_param.cuda()
-        layer_opt = None
-        if use_autograd:
-            layer_opt = torch.optim.SGD(params=[ctx_param], lr=0.1)
+        layer_opt = (
+            torch.optim.SGD(params=[ctx_param], lr=0.1) if use_autograd else None
+        )
         ctx.append(ctx_param)
         W.append(W_param)
         opt.append(layer_opt)
@@ -141,14 +139,16 @@ def gated_layer2(params, hparams, r, s, y, l_idx, t, is_train, use_autograd=Fals
             params["weights"][l_idx] = params["weights"][l_idx] - curr_lr * w_delta
         # Get new layer output with updated weights
 
-        # if use_autograd:
-        #     # weights: [batch_size, layer_dim, input_dim]
-        #     weights = torch.bmm(
-        #         c.float().permute(2, 0, 1), params["weights"][l_idx]
-        #     ).permute(1, 0, 2)
-        #     # h_out_updated: [batch_size, layer_dim]
-        #     h_out_updated = torch.bmm(weights, h.unsqueeze(2)).squeeze(2)
-        #     return r_out, params, h_out_updated
+        if use_autograd:
+            # weights: [batch_size, layer_dim, input_dim]
+            weights_updated = torch.bmm(
+                c.float().permute(2, 0, 1), params["weights"][l_idx]
+            ).permute(1, 0, 2)
+            # h_out_updated: [batch_size, layer_dim]
+            r_out_updated = torch.sigmoid(
+                torch.bmm(weights_updated, h_in.unsqueeze(2)).squeeze(2)
+            )
+            return r_out.detach(), params, r_out_updated
     return r_out.detach(), params, None
 
 
@@ -187,13 +187,13 @@ def forward(
     use_autograd = hparams["train_autograd_params"]
 
     def forward_helper(params, s_bias, is_train):
-        h = base_layer2(s_bias, hparams)
+        r = base_layer2(s_bias, hparams)
         # Gated layers
         for l_idx in range(hparams["num_layers_used"]):
-            h, params, h_updated = gated_layer2(
+            r, params, r_updated = gated_layer2(
                 params,
                 hparams,
-                h,
+                r,
                 s_bias,
                 y,
                 l_idx,
@@ -202,19 +202,19 @@ def forward(
                 use_autograd=use_autograd,
             )
             if is_train and use_autograd:
-                autograd_fn(h_updated, y, params["opt"][l_idx])
-        return h
+                autograd_fn(r_updated, y, params["opt"][l_idx])
+        return r
 
     if len(s.shape) > 1:
         s = s.flatten(start_dim=1)
     s_bias = torch.cat([s, torch.ones(s.shape[0], 1, device=hparams.device)], dim=1)
-    h = forward_helper(params, s_bias, is_train=is_train)
+    r = forward_helper(params, s_bias, is_train=is_train)
     # Add frame to animated plot
     if is_train and hparams["plot"]:
         if binary_class == 0 and not (t % 5):
             plotter.save_data(lambda xy: forward_helper(xy, y=None, is_train=False))
-    # return torch.sigmoid(h), plotter
-    return torch.sigmoid(h)
+    # return r, plotter
+    return r
 
 
 # def configure_optimizers(params):  # Global straight-through, NO neuron updates

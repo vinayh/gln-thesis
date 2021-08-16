@@ -1,3 +1,4 @@
+from src.utils.helpers import StraightThroughEstimator
 import torch
 
 
@@ -13,16 +14,19 @@ def get_params(hparams, layer_size):
     Returns:
                 [Float * [num_subctx, s_dim, layer_size]]: Weights of hyperplanes
     """
-    s_dim = hparams["input_size"] + 1
-    # pretrained_ctx = hparams["pretrained_ctx"]
-    ctx_weights = torch.empty(hparams["num_subcontexts"], s_dim, layer_size).normal_(
-        mean=0, std=1.0
-    )
-    if hparams["ctx_bias"]:
-        ctx_weights[:, -1, :].normal_(mean=0, std=0.5)
-    else:
-        ctx_weights[:, -1, :] = 0
-    return ctx_weights
+    with torch.no_grad():
+        # TODO: bias
+        # s_dim = hparams["input_size"] + 1
+        s_dim = hparams["input_size"]
+        # pretrained_ctx = hparams["pretrained_ctx"]
+        ctx_weights = torch.empty(
+            hparams["num_subcontexts"], s_dim, layer_size
+        ).normal_(mean=0, std=1.0)
+        if hparams["ctx_bias"]:
+            ctx_weights[:, -1, :].normal_(mean=0, std=0.5)
+        else:
+            ctx_weights[:, -1, :] = 0
+        return ctx_weights
 
 
 def calc(s, ctx_weights, bitwise_map, gpu=False):
@@ -37,7 +41,9 @@ def calc(s, ctx_weights, bitwise_map, gpu=False):
                                             info sample in batch
     """
     # Get 0 or 1 based on sign of each input sample with respect to each subctx
-    subctx_sign = 0.5 * (torch.sign(calc_raw(s, ctx_weights, bitwise_map)) + 1)
+    subctx_sign = 0.5 * (
+        StraightThroughEstimator.apply(calc_raw(s, ctx_weights, bitwise_map)) + 1
+    )
 
     if gpu:
         return subctx_sign.float().matmul(bitwise_map.float()).long()

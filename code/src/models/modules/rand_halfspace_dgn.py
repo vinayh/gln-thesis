@@ -3,7 +3,7 @@ import torch
 from src.utils.helpers import StraightThroughEstimator
 
 
-def get_params(hparams, layer_size):
+def get_params(hparams, layer_size, device=None):
     """Return weights for half-space context layer of specified size and num_contexts
 
         Args:
@@ -16,7 +16,12 @@ def get_params(hparams, layer_size):
     """
     num_features = hparams["input_size"] + 1
     # pretrained_ctx = hparams["pretrained_ctx"]
-    hyperplanes = torch.empty(layer_size, hparams["num_branches"], num_features)
+    if hparams.gpu:
+        hyperplanes = torch.empty(
+            layer_size, hparams["num_branches"], num_features
+        ).cuda()
+    else:
+        hyperplanes = torch.empty(layer_size, hparams["num_branches"], num_features)
     hyperplanes.normal_(mean=0, std=1.0)
     if hparams["ctx_bias"]:
         hyperplanes[:, :, -1].normal_(mean=0, std=0.5)

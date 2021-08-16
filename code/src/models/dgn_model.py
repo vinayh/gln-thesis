@@ -45,18 +45,17 @@ class DGNModel(OVAModel):
 
     # For training in BINARY_MODEL.forward():
     @staticmethod
-    def autograd_fn(h_updated, y_i, opt_i_layer):
+    def autograd_fn(r_updated, y_i, opt_i_layer):
         """Function to pass to BINARY_MODEL.forward() as callback
         for training autograd params after each gated_layer
 
         Args:
-            h_updated ([type]): [description]
+            r_updated ([type]): Layer outputs (with sigmoid applied)
             y_i ([type]): [description]
             opt_i_layer ([type]): [description]
         """
         L1_loss_fn = torch.nn.L1Loss(reduction="sum")
-        layer_logits_updated = torch.sigmoid(h_updated)
-        loss = L1_loss_fn(layer_logits_updated.T, y_i)
+        loss = L1_loss_fn(r_updated.T, y_i)
         opt_i_layer.zero_grad()
         loss.backward()
         opt_i_layer.step()
@@ -90,7 +89,6 @@ class DGNModel(OVAModel):
             )
             outputs.append(out_i)
         logits = torch.stack(outputs).T.squeeze(0)
-        # TODO: Fix NaN with 4 layers...
         loss = self.criterion(logits, y)
         acc = self.train_accuracy(torch.argmax(logits, dim=1), y)
         return loss, acc

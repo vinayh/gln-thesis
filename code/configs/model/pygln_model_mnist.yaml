@@ -1,0 +1,15 @@
+_target_: src.models.pygln_model.PyGLNModel
+
+input_size: 784
+num_classes: 10
+num_subcontexts: 4
+pred_clip: 1e-5
+w_clip: 5
+bias: false
+ctx_bias: false
+lr: 1e-3
+
+gpu: false
+svm_context: false
+plot: false
+train_autograd_params: false

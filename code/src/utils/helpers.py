@@ -44,14 +44,14 @@ def to_one_vs_all(targets, num_classes, device="cpu"):
     return ova_targets
 
 
-class STEFunction(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, input):
-        return (input > 0).bool()
+# class STEFunction(torch.autograd.Function):
+#     @staticmethod
+#     def forward(ctx, input):
+#         return (input > 0).bool()
 
-    @staticmethod
-    def backward(ctx, grad_output):
-        return torch.nn.functional.hardtanh(grad_output)
+#     @staticmethod
+#     def backward(ctx, grad_output):
+#         return torch.nn.functional.hardtanh(grad_output)
 
 
 # class StraightThroughEstimator(torch.nn.Module):
