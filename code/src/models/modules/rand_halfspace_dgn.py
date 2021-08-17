@@ -34,7 +34,7 @@ def get_params(hparams, layer_size, device=None):
     return hyperplanes
 
 
-def calc(s, hyperplanes, gpu=False):
+def calc(s, hyperplanes):
     """Calculates context indices for half-space gating given side info s
 
     Args:

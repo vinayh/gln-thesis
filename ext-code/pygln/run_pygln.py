@@ -6,7 +6,7 @@ from pygln import utils
 from pygln.pytorch import GLN
 
 print("Getting dataset")
-X_train, y_train, X_test, y_test = utils.get_mnist(deskewed=True)
+X_train, y_train, X_test, y_test = utils.get_fashionmnist(deskewed=False)
 
 model = GLN(
     layer_sizes=[16, 16, 1],

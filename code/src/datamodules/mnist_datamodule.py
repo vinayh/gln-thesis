@@ -6,14 +6,20 @@ from torchvision.transforms import transforms
 from torch import Generator
 from os.path import join
 
-from src.datamodules.mnist_utils import deskew_fn
+from src.datamodules.mnist_utils import divide_fn, deskew_fn
 from src.datamodules.pretrain_datamodule import PretrainDataModule
 
 # SEED = 42
 SEED = 17
 
+transforms_empty = transforms.Compose([transforms.ToTensor()])
+
+transforms_default = transforms.Compose(
+    [transforms.ToTensor(), transforms.Lambda(divide_fn), transforms.ToTensor()]
+)
+
 transforms_deskew = transforms.Compose(
-    [transforms.ToTensor(), transforms.Lambda(deskew_fn), transforms.ToTensor(),]
+    [transforms.ToTensor(), transforms.Lambda(deskew_fn), transforms.ToTensor()]
 )
 
 transforms_normalize = transforms.Compose(
@@ -50,7 +56,8 @@ class MNISTDataModule(PretrainDataModule):
             print("MNIST DataModule: deskewing enabled")
             self.transforms = transforms_deskew
         else:
-            self.transforms = transforms.Compose([transforms.ToTensor()])
+            self.transforms = transforms_empty
+            # self.transforms = transforms.Compose([transforms.ToTensor()])
 
         # self.dims is returned when you call datamodule.size()
         self.dims = (1, 28, 28)

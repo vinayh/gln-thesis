@@ -21,10 +21,6 @@ def logit_geo_mix(logit_prev_layer, weights):
     return torch.sigmoid(weights.matmul(logit_prev_layer))
 
 
-def inv_sigmoid(x):
-    return torch.log(x / (1 - x))
-
-
 def to_one_vs_all(targets, num_classes, device="cpu"):
     """[summary]
 
@@ -68,7 +64,7 @@ class StraightThroughEstimator(torch.autograd.Function):
     def forward(ctx, input):
         return torch.heaviside(
             input, torch.zeros(1).type_as(input)
-        )  # this outputs 0 or 1
+        ).float()  # this outputs 0 or 1
 
     @staticmethod
     def backward(ctx, grad_output):
