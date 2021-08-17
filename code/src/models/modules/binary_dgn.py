@@ -7,6 +7,7 @@ from src.utils.helpers import nan_inf_in_tensor, logit
 # from src.utils.gated_plotter import GatedPlotter
 
 LAYER_BIAS = e / (e + 1)
+L1_LOSS_FN = torch.nn.L1Loss(reduction="sum")
 
 
 def init_params(layer_sizes, hparams, binary_class=0, X_all=None, y_all=None):
@@ -15,15 +16,15 @@ def init_params(layer_sizes, hparams, binary_class=0, X_all=None, y_all=None):
     for i in range(1, len(layer_sizes)):
         input_dim, layer_dim = layer_sizes[i - 1], layer_sizes[i]
         layer_ctx = rand_hspace_dgn.get_params(hparams, layer_dim)
-        layer_W = 0.5 * torch.ones(
-            layer_dim, hparams["num_branches"], input_dim + 1, device=hparams.device
-        )
-        ctx_param = torch.nn.Parameter(layer_ctx, requires_grad=use_autograd)
-        W_param = torch.nn.Parameter(layer_W, requires_grad=False)
+        layer_W = 0.5 * torch.ones(layer_dim, hparams["num_branches"], input_dim + 1)
         if hparams["gpu"]:
-            W_param = W_param.cuda()
+            layer_W = layer_W.cuda()
+        ctx_param = torch.nn.Parameter(layer_ctx, requires_grad=use_autograd)
+        W_param = torch.nn.Parameter(layer_W, requires_grad=use_autograd)
         layer_opt = (
-            torch.optim.SGD(params=[ctx_param], lr=0.1) if use_autograd else None
+            torch.optim.Adam(params=[W_param, ctx_param], lr=1e-2)
+            if use_autograd
+            else None
         )
         ctx.append(ctx_param)
         W.append(W_param)
@@ -76,14 +77,69 @@ def gated_layer(
         with torch.no_grad():
             W_l = W_l - lr(hparams, t) * w_delta
             params["weights"][l_idx] = W_l
-        # Get new layer output with updated weights
         if use_autograd:
             # weights: [batch_size, layer_dim, input_dim]
             weights = torch.bmm(c.permute(2, 0, 1), W_l).permute(1, 0, 2)
             # h_out_updated: [batch_size, layer_dim]
             h_out_updated = torch.bmm(weights, h_in.unsqueeze(2)).squeeze(2)
-            return h_out, params, h_out_updated
+            return h_out.detach(), params, h_out_updated
+        # if use_autograd:
+        # else:
+        # Get new layer output with updated weights
     return h_out, params, None
+
+
+def gated_layer_w(
+    params, hparams, h_in, s, targets, l_idx, t, is_train, use_autograd=False
+):
+    """Using provided input activations, context functions, and weights,
+        returns the result of the DGN layer
+
+    Args:
+        h_in ([Float * [batch_size, input_dim]]): Input activations with logit
+        s ([Float * [batch_size, self.s_dim]]): Batch of side info samples s
+        y ([Float * [batch_size]]): Batch of binary targets
+        l_idx (Int): Layer index for selecting ctx and layer weights
+        is_train (bool): Whether to train/update on this batch or not
+    Returns:
+        [Float * [batch_size, layer_dim]]: Output of DGN layer
+    """
+    P_CLIP = hparams["pred_clip"]
+    h_in = torch.cat([h_in, torch.ones_like(h_in[:, :1])], dim=1)
+    W_l = params["weights"][l_idx]
+    # c: [batch_size, layer_dim]
+    c = rand_hspace_dgn.calc(s, params["ctx"][l_idx])
+    # weights: [batch_size, layer_dim, input_dim]
+    weights = torch.bmm(c.permute(2, 0, 1), W_l).permute(1, 0, 2)
+    # h_out: [batch_size, layer_dim]
+    h_out = torch.bmm(weights, h_in.unsqueeze(2)).squeeze(2)
+    if is_train:
+        r_out_unclipped = torch.sigmoid(h_out)
+        r_out = torch.clamp(r_out_unclipped, min=P_CLIP, max=1 - P_CLIP)
+        # learn_gates: [batch_size, layer_dim]
+        learn_gates = (torch.abs(targets - r_out_unclipped) > P_CLIP).float()
+        w_grad = torch.bmm(
+            ((r_out - targets) * learn_gates).unsqueeze(2), h_in.unsqueeze(1)
+        )
+        w_delta = torch.bmm(c.permute(2, 1, 0), w_grad.permute(1, 0, 2))
+        # assert(w_delta.shape == W[l_idx].shape)
+        # TODO delete this: W.grad = w_delta
+        if use_autograd:
+            loss = L1_LOSS_FN(torch.sigmoid(h_out), targets)
+            params["opt"][l_idx].zero_grad()
+            loss.backward()
+            params["weights"][l_idx].grad = w_delta
+            params["opt"][l_idx].step()
+        else:
+            with torch.no_grad():
+                params["weights"][l_idx] = W_l
+                # weights: [batch_size, layer_dim, input_dim]
+                weights = torch.bmm(c.permute(2, 0, 1), W_l).permute(1, 0, 2)
+                # h_out_updated: [batch_size, layer_dim]
+                h_out_updated = torch.bmm(weights, h_in.unsqueeze(2)).squeeze(2)
+                return h_out.detach(), params, h_out_updated
+        # Get new layer output with updated weights
+    return h_out.detach(), params, None
 
 
 def gated_layer2(
@@ -142,7 +198,7 @@ def gated_layer2(
                 torch.bmm(weights_updated, h_in.unsqueeze(2)).squeeze(2)
             )
             return r_out.detach(), params, r_out_updated
-    return r_out.detach(), params, None
+    return r_out, params, None
 
 
 def base_layer(s_bias, hparams):
@@ -195,7 +251,28 @@ def forward(
                 use_autograd=use_autograd,
             )
             if is_train and use_autograd:
-                autograd_fn(h_updated, y, params["opt"][l_idx])
+                r_updated = torch.sigmoid(h_updated)
+                autograd_fn(r_updated, y, params["opt"][l_idx])
+        return torch.sigmoid(h)
+
+    def forward_helper_w(params, s_bias, targets=None, is_train=False):
+        h = base_layer(s_bias, hparams)
+        # Gated layers
+        for l_idx in range(hparams["num_layers_used"]):
+            h, params, h_updated = gated_layer_w(
+                params,
+                hparams,
+                h,
+                s_bias,
+                targets,
+                l_idx,
+                t,
+                is_train=is_train,
+                use_autograd=use_autograd,
+            )
+            # if is_train and use_autograd:
+            #     r_updated = torch.sigmoid(h_updated)
+            #     autograd_fn(r_updated, y, params["opt"][l_idx])
         return torch.sigmoid(h)
 
     def forward_helper2(params, s_bias, targets=None, is_train=False):
@@ -220,7 +297,7 @@ def forward(
     if len(s.shape) > 1:
         s = s.flatten(start_dim=1)
     s_bias = torch.cat([s, torch.ones_like(s[:, :1])], dim=1)
-    r = forward_helper(params, s_bias, targets=y.unsqueeze(1), is_train=is_train)
+    r = forward_helper_w(params, s_bias, targets=y.unsqueeze(1), is_train=is_train)
     # Add frame to animated plot
     if is_train and hparams["plot"]:
         if binary_class == 0 and not (t % 5):
