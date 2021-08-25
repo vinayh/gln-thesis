@@ -49,11 +49,8 @@ class GLNModel(OVAModel):
             [Float * [batch_size, output_layer_dim]]: Output of GLN layer
         """
         num_classes, layer_dim, _, input_dim = self.params["weights"][l_idx].shape
-        if s.ndim == 1:
-            s.unsqueeze(0)
-        s = s[:, :-1]  # TODO: bias
-        batch_size = s.shape[0]
-        # c: [batch_size, input_dim]
+        # batch_size = s.shape[0]
+        # c: [num_classes, layer_size]
         c = rand_hspace_gln.calc(
             s, self.params["ctx"][l_idx], self.bmap, self.hparams["gpu"]
         )
@@ -62,17 +59,20 @@ class GLNModel(OVAModel):
         # logit_x = torch.cat([logit_x, layer_bias * torch.ones_like(logit_x[:, :1])], dim=1)
         if nan_inf_in_tensor(logit_x):
             raise Exception
-        # w_ctx: [batch_size, input_dim, output_layer_dim]
+        # w_ctx: [num_classes, output_dim, input_dim]
         w_ctx = torch.stack(
             [
-                self.params["weights"][l_idx][range(layer_dim), c[j], :]
-                for j in range(batch_size)
+                self.params["weights"][l_idx][
+                    i, c[i, range(c.shape[1])], range(c.shape[1]), :
+                ]
+                for i in range(num_classes)
             ]
         )
         if nan_inf_in_tensor(w_ctx):
             raise Exception
-        # logit_x_out: [batch_size, output_layer_dim]
-        logit_x_out = torch.bmm(w_ctx, logit_x.unsqueeze(2)).flatten(start_dim=1)
+        # logit_x_out: [num_classes, output_dim]
+        # logit_x_out = torch.matmul(w_ctx, logit_x)
+        logit_x_out = torch.bmm(w_ctx, logit_x.unsqueeze(2)).squeeze(2)
         # Clamp to pred_clip
         logit_x_out = torch.clamp(
             logit_x_out,
@@ -83,11 +83,9 @@ class GLNModel(OVAModel):
             raise Exception
         if is_train:
             # loss: [batch_size, output_layer_dim]
-            if y.ndim > 0:
-                loss = torch.sigmoid(logit_x_out) - y.unsqueeze(1)
-            else:
-                loss = torch.sigmoid(logit_x_out) - y
-            # w_delta: torch.einsum('ab,ac->acb', loss, logit_x)  # [batch_size, input_dim, output_layer_dim]
+            loss = torch.sigmoid(logit_x_out) - y.unsqueeze(1)
+            # w_delta: [num_classes, output_dim, input_dim]
+            # w_delta: torch.einsum('ab,ac->acb', loss, logit_x)
             w_delta = torch.bmm(loss.unsqueeze(2), logit_x.unsqueeze(1))
             w_new = torch.clamp(
                 w_ctx - self.lr(self.hparams, self.t) * w_delta,
@@ -96,16 +94,20 @@ class GLNModel(OVAModel):
             )
             if nan_inf_in_tensor(w_new):
                 raise Exception
-            # [batch_size, input_dim, output_layer_dim]
+            # [num_classes, output_dim, input_dim]
             with torch.no_grad():
-                for j in range(batch_size):
-                    self.params["weights"][l_idx][range(layer_dim), c[j], :] = w_new[j]
+                for i in range(self.hparams["num_classes"]):
+                    self.params["weights"][l_idx][
+                        i, c[i, range(c.shape[1])], range(c.shape[1]), :
+                    ] = w_new[i]
             #  TODO: Try adding layer_bias here to see if it helps
+
+            # TODO: Fix autograd with GLN rewrite
             if use_autograd:
-                # w_ctx: [batch_size, input_dim, output_layer_dim]
+                # w_ctx: [num_classes, output_dim, input_dim]
                 logit_x_out_updated = torch.bmm(w_new, logit_x.unsqueeze(2)).flatten(
                     start_dim=1
-                )  # [batch_size, output_layer_dim]
+                )  # [num_classes, output_layer_dim]
                 return logit_x_out, self.params, logit_x_out_updated
         return logit_x_out, self.params, None
 
@@ -113,18 +115,14 @@ class GLNModel(OVAModel):
         # TODO: Try using base_bias params to see if it helps
         p_clip = self.hparams["pred_clip"]
         logit_x_out = logit(torch.clamp(s_i, min=p_clip, max=1 - p_clip))
+        logit_x_out = logit_x_out.expand(self.hparams["num_classes"], -1)
         if self.hparams["base_bias"]:
-            if logit_x_out.ndim == 1:
-                return torch.cat([logit_x_out[:-1], self.params["base_bias"]])
-            else:
-                return torch.cat([logit_x_out[:, :-1], self.params["base_bias"]])
+            return torch.cat([logit_x_out[:, :-1], self.params["base_bias"]])
         else:
-            if logit_x_out.ndim == 1:
-                return logit_x_out[:-1]
-            else:
-                return logit_x_out[:, :-1]
+            return logit_x_out[:, :-1]
 
     def forward_helper(self, s_i, y_i, is_train):
+        s_i = s_i.squeeze(0)
         x_i = self.base_layer(s_i)
         # Gated layers
         for l_idx in range(self.hparams["num_layers_used"]):
@@ -148,9 +146,7 @@ class GLNModel(OVAModel):
             for i in range(s.shape[0])
         ]
 
-        x = torch.sigmoid(torch.tensor(x).type_as(s))
-
-        logits = torch.stack(x).T.squeeze(0)
+        logits = torch.sigmoid(torch.stack(x).squeeze(2).type_as(s))
         loss = self.criterion(logits, y)
         acc = self.train_accuracy(torch.argmax(logits, dim=1), y)
         return loss, acc
@@ -171,7 +167,7 @@ class GLNModel(OVAModel):
             input_dim, layer_dim = layer_sizes[i - 1], layer_sizes[i]
             layer_ctx = rand_hspace_gln.get_params(self.hparams, layer_dim)
             layer_W = (
-                torch.ones(num_classes, layer_dim, num_contexts, input_dim) / input_dim
+                torch.ones(num_classes, num_contexts, layer_dim, input_dim) / input_dim
             )
             layer_bias = torch.empty(1, 1).uniform_(logit(p_clip), logit(1 - p_clip))
             # TODO: Currently disabled grad to train on multiple GPUs without

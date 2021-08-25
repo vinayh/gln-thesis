@@ -1,5 +1,5 @@
-from src.utils.helpers import StraightThroughEstimator
 import torch
+from src.utils.helpers import StraightThroughEstimator
 
 
 def get_params(hparams, layer_size):
@@ -12,15 +12,15 @@ def get_params(hparams, layer_size):
                                 i.e. num_contexts = 2**num_subcontexts
 
     Returns:
-                [Float * [num_subctx, s_dim, layer_size]]: Weights of hyperplanes
+                [Float * [num_classes, num_subctx, layer_size, s_dim]]: Weights of hyperplanes
     """
     with torch.no_grad():
         # TODO: bias
-        # s_dim = hparams["input_size"] + 1
-        s_dim = hparams["input_size"]
+        s_dim = hparams["input_size"] + 1
+        # s_dim = hparams["input_size"]
         # pretrained_ctx = hparams["pretrained_ctx"]
         ctx_weights = torch.empty(
-            hparams["num_classes"], hparams["num_subcontexts"], s_dim, layer_size
+            hparams["num_classes"], hparams["num_subcontexts"], layer_size, s_dim
         ).normal_(mean=0, std=1.0)
         if hparams["ctx_bias"]:
             ctx_weights[:, -1, :].normal_(mean=0, std=0.5)
@@ -41,14 +41,14 @@ def calc(s, ctx_weights, bitwise_map, gpu=False):
                                             info sample in batch
     """
     # Get 0 or 1 based on sign of each input sample with respect to each subctx
-    subctx_sign = StraightThroughEstimator.apply(calc_raw(s, ctx_weights, bitwise_map))
+    subctx_sign = StraightThroughEstimator.apply(calc_raw(s, ctx_weights))
     if gpu:
-        return subctx_sign.float().matmul(bitwise_map.float()).long()
+        return bitwise_map.float().matmul(subctx_sign).long()
     else:
-        return subctx_sign.long().matmul(bitwise_map)
+        return bitwise_map.long().matmul(subctx_sign)
 
 
-def calc_raw(s, ctx_weights, bitwise_map):
+def calc_raw(s, ctx_weights):
     """Calculates subcontext distances for half-space gating given side info s
 
     Args:
@@ -58,9 +58,8 @@ def calc_raw(s, ctx_weights, bitwise_map):
         [Int * [batch_size, layer_size]]: Context indices for each side
                                             info sample in batch
     """
-    ctx_dist = torch.matmul(
-        s.expand(ctx_weights.shape[0], s.shape[0], s.shape[1]), ctx_weights
-    )
-    ctx_results = ctx_dist.permute(1, 2, 0)
-    # ctx_results = (torch.einsum('abc,db->dca', self.ctx_weights, s) > 0)
-    return ctx_results
+    # ctx_dist: [num_classes, num_subcontexts, layer_size]
+    ctx_dist = torch.matmul(ctx_weights, s.squeeze(0))
+    # ctx_results = ctx_dist.permute(1, 2, 0)
+    # # ctx_results = (torch.einsum('abc,db->dca', self.ctx_weights, s) > 0)
+    return ctx_dist
