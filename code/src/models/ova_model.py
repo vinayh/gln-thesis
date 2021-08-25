@@ -88,12 +88,13 @@ class OVAModel(LightningModule):
             [type]: [description]
         """
         # with torch.no_grad():
-        y_ova = to_one_vs_all(y, self.num_classes, self.device)
-        outputs = [
-            self.models[i].forward(x, y_ova[i], is_train)
-            for i in range(self.num_classes)
-        ]
-        return torch.stack(outputs).T.squeeze(0)
+        # y_ova = to_one_vs_all(y, self.num_classes, self.device)
+        # outputs = [
+        #     self.models[i].forward(x, y_ova[i], is_train)
+        #     for i in range(self.num_classes)
+        # ]
+        # return torch.stack(outputs).T.squeeze(0)
+        return NotImplementedError
 
     def training_step(self, batch: Any, batch_idx: int):
         self.t += 1

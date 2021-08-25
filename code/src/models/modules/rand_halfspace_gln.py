@@ -20,7 +20,7 @@ def get_params(hparams, layer_size):
         s_dim = hparams["input_size"]
         # pretrained_ctx = hparams["pretrained_ctx"]
         ctx_weights = torch.empty(
-            hparams["num_subcontexts"], s_dim, layer_size
+            hparams["num_classes"], hparams["num_subcontexts"], s_dim, layer_size
         ).normal_(mean=0, std=1.0)
         if hparams["ctx_bias"]:
             ctx_weights[:, -1, :].normal_(mean=0, std=0.5)
@@ -41,10 +41,7 @@ def calc(s, ctx_weights, bitwise_map, gpu=False):
                                             info sample in batch
     """
     # Get 0 or 1 based on sign of each input sample with respect to each subctx
-    subctx_sign = 0.5 * (
-        StraightThroughEstimator.apply(calc_raw(s, ctx_weights, bitwise_map)) + 1
-    )
-
+    subctx_sign = StraightThroughEstimator.apply(calc_raw(s, ctx_weights, bitwise_map))
     if gpu:
         return subctx_sign.float().matmul(bitwise_map.float()).long()
     else:

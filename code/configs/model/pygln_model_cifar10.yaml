@@ -1,11 +1,6 @@
 _target_: src.models.pygln_model.PyGLNModel
 
-input_size: 784
-lin1_size: 16
-lin2_size: 16
-lin3_size: 1
-# lin4_size: 1
-
+input_size: 3072
 num_classes: 10
 num_subcontexts: 4
 pred_clip: 1e-5

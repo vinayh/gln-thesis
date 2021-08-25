@@ -54,13 +54,6 @@ def init_params(layer_sizes, hparams, binary_class=0, X_all=None, y_all=None):
     }
 
 
-def lr(hparams, t):
-    if hparams["dynamic_lr"]:
-        return min(hparams["lr"], hparams["lr"] / (1.0 + 1e-3 * t))
-    else:
-        return hparams["lr"]
-
-
 def gated_layer(
     params, hparams, logit_x, s, y, l_idx, t, bmap, is_train, use_autograd=False,
 ):
@@ -76,12 +69,15 @@ def gated_layer(
     Returns:
         [Float * [batch_size, output_layer_dim]]: Output of GLN layer
     """
-    s = s[:, :-1]  # TODO: bias
+    if s.ndim == 1:
+        s = s[:-1]
+    else:
+        s = s[:, :-1]  # TODO: bias
     batch_size = s.shape[0]
     layer_dim, _, input_dim = params["weights"][l_idx].shape
     # c: [batch_size, input_dim]
     c = rand_hspace_gln.calc(s, params["ctx"][l_idx], bmap, hparams["gpu"])
-    layer_bias = e / (e + 1)
+    # layer_bias = e / (e + 1)
     # TODO: bias
     # logit_x = torch.cat([logit_x, layer_bias * torch.ones_like(logit_x[:, :1])], dim=1)
     if nan_inf_in_tensor(logit_x):
@@ -104,7 +100,10 @@ def gated_layer(
         raise Exception
     if is_train:
         # loss: [batch_size, output_layer_dim]
-        loss = torch.sigmoid(logit_x_out) - y.unsqueeze(1)
+        if y.ndim > 0:
+            loss = torch.sigmoid(logit_x_out) - y.unsqueeze(1)
+        else:
+            loss = torch.sigmoid(logit_x_out) - y
         # w_delta: torch.einsum('ab,ac->acb', loss, logit_x)  # [batch_size, input_dim, output_layer_dim]
         w_delta = torch.bmm(loss.unsqueeze(2), logit_x.unsqueeze(1))
         w_new = torch.clamp(
@@ -133,9 +132,15 @@ def base_layer(params, hparams, s_bias):
     p_clip = hparams["pred_clip"]
     logit_x_out = logit(torch.clamp(s_bias, min=p_clip, max=1 - p_clip))
     if hparams["base_bias"]:
-        return torch.cat([logit_x_out[:, :-1], params["base_bias"]])
+        if logit_x_out.ndim == 1:
+            return torch.cat([logit_x_out[:-1], params["base_bias"]])
+        else:
+            return torch.cat([logit_x_out[:, :-1], params["base_bias"]])
     else:
-        return logit_x_out[:, :-1]
+        if logit_x_out.ndim == 1:
+            return logit_x_out[:-1]
+        else:
+            return logit_x_out[:, :-1]
 
 
 def add_ctx_to_plot(params, hparams, X_all, y_all, xy, add_to_plot_fn):
@@ -172,34 +177,11 @@ def forward(
     """
     use_autograd = hparams["train_autograd_params"]
 
-    def forward_helper(params, s_bias, is_train):
-        x = base_layer(params, hparams, s_bias)
-        # Gated layers
-        for l_idx in range(hparams["num_layers_used"]):
-            x, params, x_updated = gated_layer(
-                params,
-                hparams,
-                x,
-                s_bias,
-                y,
-                l_idx,
-                t,
-                bmap,
-                is_train=is_train,
-                use_autograd=use_autograd,
-            )
-            if is_train and use_autograd:
-                # TODO: x_updated?
-                autograd_fn(x, y, params["opt"][l_idx])
-        return x
+    ##### forward_helper
 
-    s = s.flatten(start_dim=1)
-    s_bias = torch.cat([s, torch.ones_like(s[:, :1])], dim=1)
-    x = forward_helper(params, s_bias, is_train=is_train)
+    ###
 
-    # Add frame to animated plot
-    if is_train and hparams["plot"]:
-        if binary_class == 0 and not (t % 5):
-            plotter.save_data(lambda xy: forward_helper(xy, y=None, is_train=False))
-    # return torch.sigmoid(x), plotter
+    ###
+    # x = forward_helper(params, s_bias, is_train=is_train)
+
     return torch.sigmoid(x)

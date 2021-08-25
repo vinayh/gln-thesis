@@ -48,7 +48,11 @@ class PyGLNModel(LightningModule):
                          which will each be trained for a binary one-vs-all task
         """
         return GLN(
-            layer_sizes=[16, 16, 1],
+            layer_sizes=[
+                self.hparams["lin1_size"],
+                self.hparams["lin2_size"],
+                self.hparams["lin3_size"],
+            ],
             input_size=self.hparams["input_size"],
             num_classes=self.num_classes,
             pred_clipping=self.hparams["pred_clip"],

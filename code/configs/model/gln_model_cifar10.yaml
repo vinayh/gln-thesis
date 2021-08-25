@@ -1,19 +1,25 @@
-_target_: src.models.pygln_model.PyGLNModel
+_target_: src.models.gln_model.GLNModel
 
-input_size: 784
+input_size: 3072
 lin1_size: 16
 lin2_size: 16
 lin3_size: 1
-# lin4_size: 1
+lin4_size: 1
+num_layers_used: 3
 
 num_classes: 10
 num_subcontexts: 4
 pred_clip: 1e-5
+# pred_clip: 0
 w_clip: 5
-bias: false
+base_bias: false
 ctx_bias: false
-lr: 1e-3
 
+# lr: 0.20
+lr: 1e-3
+dynamic_lr: false
+
+weight_decay: 0.0005
 gpu: false
 svm_context: false
 plot: false
