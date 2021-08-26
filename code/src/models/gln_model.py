@@ -48,26 +48,22 @@ class GLNModel(OVAModel):
         Returns:
             [Float * [batch_size, output_layer_dim]]: Output of GLN layer
         """
-        num_classes, layer_dim, _, input_dim = self.params["weights"][l_idx].shape
+        num_classes, _, output_dim, input_dim = self.W[l_idx].shape
         # batch_size = s.shape[0]
         # c: [num_classes, layer_size]
-        c = rand_hspace_gln.calc(
-            s, self.params["ctx"][l_idx], self.bmap, self.hparams["gpu"]
-        )
+        c = rand_hspace_gln.calc(s, self.ctx[l_idx], self.bmap, self.hparams["gpu"])
         # layer_bias = e / (e + 1)
         # TODO: bias
         # logit_x = torch.cat([logit_x, layer_bias * torch.ones_like(logit_x[:, :1])], dim=1)
         if nan_inf_in_tensor(logit_x):
             raise Exception
         # w_ctx: [num_classes, output_dim, input_dim]
-        w_ctx = torch.stack(
-            [
-                self.params["weights"][l_idx][
-                    i, c[i, range(c.shape[1])], range(c.shape[1]), :
-                ]
-                for i in range(num_classes)
-            ]
-        )
+        w_ctx = self.W[l_idx][
+            torch.arange(num_classes).reshape(-1, 1),
+            c,
+            torch.arange(output_dim).reshape(1, -1),
+            :,
+        ]
         if nan_inf_in_tensor(w_ctx):
             raise Exception
         # logit_x_out: [num_classes, output_dim]
@@ -96,10 +92,16 @@ class GLNModel(OVAModel):
                 raise Exception
             # [num_classes, output_dim, input_dim]
             with torch.no_grad():
-                for i in range(self.hparams["num_classes"]):
-                    self.params["weights"][l_idx][
-                        i, c[i, range(c.shape[1])], range(c.shape[1]), :
-                    ] = w_new[i]
+                self.W[l_idx][
+                    torch.arange(num_classes).reshape(-1, 1),
+                    c,
+                    torch.arange(output_dim).reshape(1, -1),
+                    :,
+                ] = w_new
+                # for i in range(self.hparams["num_classes"]):
+                #     self.W[l_idx][
+                #         i, c[i, range(c.shape[1])], range(c.shape[1]), :
+                #     ] = w_new[i]
             #  TODO: Try adding layer_bias here to see if it helps
 
             # TODO: Fix autograd with GLN rewrite
@@ -131,7 +133,7 @@ class GLNModel(OVAModel):
             )
             if is_train and self.hparams["train_autograd_params"]:
                 # TODO: x_updated?
-                self.autograd_fn(x_i, y_i, self.params["opt"][l_idx])
+                self.autograd_fn(x_i, y_i, self.opt[l_idx])
         return x_i
 
     def forward(self, batch: Any, is_train=False):
@@ -152,7 +154,7 @@ class GLNModel(OVAModel):
         return loss, acc
 
     def init_params(self, layer_sizes, X_all=None, y_all=None):
-        ctx, W, opt, biases = [], [], [], []
+        self.ctx, self.W, self.opt, self.biases = [], [], [], []
         base_bias = None
         num_contexts = 2 ** self.hparams["num_subcontexts"]
         use_autograd = self.hparams["train_autograd_params"]
@@ -183,17 +185,17 @@ class GLNModel(OVAModel):
             layer_opt = (
                 torch.optim.SGD(params=[layer_ctx], lr=0.1) if use_autograd else None
             )
-            ctx.append(ctx_param)
-            W.append(W_param)
-            opt.append(layer_opt)
-            biases.append(bias_param)
-        return {
-            "ctx": ctx,
-            "weights": W,
-            "opt": opt,
-            "biases": biases,
-            "base_bias": base_bias,
-        }
+            self.ctx.append(ctx_param)
+            self.W.append(W_param)
+            self.opt.append(layer_opt)
+            self.biases.append(bias_param)
+        # return {
+        #     "ctx": ctx,
+        #     "weights": W,
+        #     "opt": opt,
+        #     "biases": biases,
+        #     "base_bias": base_bias,
+        # }
 
     @staticmethod
     def lr(hparams, t):
