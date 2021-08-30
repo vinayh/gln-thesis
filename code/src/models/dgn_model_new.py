@@ -6,93 +6,81 @@ from typing import Any
 from src.models.ova_model import OVAModel
 from src.utils.helpers import to_one_vs_all
 from src.utils.helpers import logit, nan_inf_in_tensor
-import src.models.modules.rand_halfspace_gln as rand_hspace_gln
+import src.models.modules.rand_halfspace_dgn as rand_hspace_dgn
 
 
-class GLNModel(OVAModel):
+class DGNModel(OVAModel):
     """
-    LightningModule for classification (e.g. MNIST) using GLN with one-vs-all abstraction.
+    LightningModule for classification (e.g. MNIST) using DGN with one-vs-all abstraction.
     """
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
     def gated_layer(
-        self, logit_x, s, y, l_idx, is_train, use_autograd=False,
+        self, h_in, s, y, l_idx, is_train, use_autograd=False,
     ):
         """Using provided input activations, context functions, and weights,
-        returns the result of the GLN layer
+        returns the result of the DGN layer
 
         Args:
-            logit_x ([Float * [batch_size, input_dim]]): Input activations (with logit applied)
+            h_in ([Float * [batch_size, input_dim]]): Input activations (with logit applied)
             s ([Float * [batch_size, s_dim]]): Batch of side info samples s
             y ([Float * [batch_size]]): Batch of binary targets
             l_idx (Int): Index of layer to use for selecting correct ctx and layer weights
             is_train (bool): Whether to train/update on this batch or not (for val/test)
         Returns:
-            [Float * [batch_size, output_layer_dim]]: Output of GLN layer
+            [Float * [batch_size, output_layer_dim]]: Output of DGN layer
         """
         num_classes, _, output_dim, input_dim = self.W[l_idx].shape
-        # c: [num_classes, output_dim]
-        c = rand_hspace_gln.calc(s, self.ctx[l_idx], self.bmap, self.hparams["gpu"])
+        # c: [num_classes, num_subcontexts, output_dim]
+        c = rand_hspace_dgn.calc(s, self.ctx[l_idx])
         # layer_bias = e / (e + 1)  # TODO: bias
-        if nan_inf_in_tensor(logit_x):
+        if nan_inf_in_tensor(h_in):
             raise Exception
         # w_ctx: [num_classes, output_dim, input_dim]
-        w_ctx = self.W[l_idx][
-            torch.arange(num_classes).reshape(-1, 1),
-            c,
-            torch.arange(output_dim).reshape(1, -1),
-            :,
-        ]
+        w_ctx = c.unsqueeze(2).matmul(self.W[l_idx]).squeeze(2)
         if nan_inf_in_tensor(w_ctx):
             raise Exception
-        # logit_x_out: [num_classes, output_dim]
-        # logit_x_out = torch.matmul(w_ctx, logit_x)
-        logit_x_out = torch.bmm(w_ctx, logit_x.unsqueeze(2)).squeeze(2)
-        # Clamp to pred_clip
-        logit_x_out = torch.clamp(
-            logit_x_out,
-            min=logit(self.hparams["pred_clip"]),
-            max=logit(1 - self.hparams["pred_clip"]),
-        )
-        if nan_inf_in_tensor(logit_x_out):
+        # h_out: [num_classes, output_dim]
+        h_out = torch.bmm(w_ctx, h_in.unsqueeze(2)).squeeze(2)
+        if nan_inf_in_tensor(h_out):
             raise Exception
         if is_train:
-            # loss: [batch_size, output_layer_dim]
-            loss = torch.sigmoid(logit_x_out) - y.unsqueeze(1)
-            # w_delta: [num_classes, output_dim, input_dim]
-            # w_delta: torch.einsum('ab,ac->acb', loss, logit_x)
-            w_delta = torch.bmm(loss.unsqueeze(2), logit_x.unsqueeze(1))
-            w_new = torch.clamp(
-                w_ctx - self.lr(self.hparams, self.t) * w_delta,
-                min=-self.hparams["w_clip"],
-                max=self.hparams["w_clip"],
+            r_out_unclipped = torch.sigmoid(h_out)
+            r_out = torch.clamp(
+                r_out_unclipped,
+                min=logit(self.hparams["pred_clip"]),
+                max=logit(1 - self.hparams["pred_clip"]),
             )
-            if nan_inf_in_tensor(w_new):
-                raise Exception
+            # learn_gates = [num_classes, layer_dim]
+            learn_gates = (
+                torch.abs(r_out_unclipped - y.unsqueeze(1)) > self.hparams["pred_clip"]
+            ).float()
+            w_grad = torch.bmm(
+                ((r_out - y.unsqueeze(1)) * learn_gates).unsqueeze(2), h_in.unsqueeze(1)
+            )
+            # TODO 2021-08-30: Verify w_grad calc above, fix w_delta calc below
+            # and verify with paper
+            w_delta = c.unsqueeze(2).matmul(w_grad).squeeze(2)
             # [num_classes, output_dim, input_dim]
-            with torch.no_grad():
-                self.W[l_idx][
-                    torch.arange(num_classes).reshape(-1, 1),
-                    c,
-                    torch.arange(output_dim).reshape(1, -1),
-                    :,
-                ] = w_new
-                # for i in range(self.hparams["num_classes"]):
-                #     self.W[l_idx][
-                #         i, c[i, range(c.shape[1])], range(c.shape[1]), :
-                #     ] = w_new[i]
-            #  TODO: Try adding layer_bias here to see if it helps
+            if not use_autograd:
+                with torch.no_grad():
+                    self.W[l_idx] = (
+                        self.W[l_idx] - self.lr(self.hparams, self.t) * w_delta
+                    )
+            else:
+                raise NotImplementedError
+            # TODO: Try adding layer_bias here to see if it helps
+            # TODO: Fix autograd with DGN rewrite
 
-            # TODO: Fix autograd with GLN rewrite
-            if use_autograd:
-                # w_ctx: [num_classes, output_dim, input_dim]
-                logit_x_out_updated = torch.bmm(w_new, logit_x.unsqueeze(2)).flatten(
-                    start_dim=1
-                )  # [num_classes, output_layer_dim]
-                return logit_x_out, logit_x_out_updated
-        return logit_x_out, None
+            # if use_autograd:
+            #     # w_ctx: [num_classes, output_dim, input_dim]
+            #     logit_x_out_updated = torch.bmm(w_new, logit_x.unsqueeze(2)).flatten(
+            #         start_dim=1
+            #     )  # [num_classes, output_layer_dim]
+            #     return logit_x_out, logit_x_out_updated
+        return h_out, None
 
     def base_layer(self, s_i):
         # TODO: Try using base_bias params to see if it helps
@@ -135,26 +123,25 @@ class GLNModel(OVAModel):
     def init_params(self, X_all=None, y_all=None):
         self.ctx, self.W, self.opt, self.biases = [], [], [], []
         base_bias = None
-        num_contexts = 2 ** self.hparams["num_subcontexts"]
+        num_branches = self.hparams["num_branches"]
         use_autograd = self.hparams["train_autograd_params"]
         num_classes = self.hparams["num_classes"]
         p_clip = self.hparams["pred_clip"]
         # Base bias
         if self.hparams["base_bias"]:
             base_bias = torch.random.uniform(low=logit(p_clip), high=logit(1 - p_clip))
-        bmap = torch.tensor([2 ** i for i in range(self.hparams["num_subcontexts"])])
         # Params for gated layers
         for i in range(1, len(self.layer_sizes)):
             # input_dim, layer_dim = self.layer_sizes[i - 1] + 1, self.layer_sizes[i]
             input_dim, layer_dim = self.layer_sizes[i - 1], self.layer_sizes[i]
-            layer_ctx = rand_hspace_gln.get_params(self.hparams, layer_dim)
+            layer_ctx = rand_hspace_dgn.get_params(self.hparams, layer_dim)
             layer_W = (
-                torch.ones(num_classes, num_contexts, layer_dim, input_dim) / input_dim
+                torch.ones(num_classes, layer_dim, num_branches, input_dim) / input_dim
             )
             layer_bias = torch.empty(1, 1).uniform_(logit(p_clip), logit(1 - p_clip))
             # TODO: Currently disabled grad to train on multiple GPUs without
             # error of autograd transferring data across devices
-            ctx_param = torch.nn.Parameter(layer_ctx, requires_grad=False)
+            ctx_param = torch.nn.Parameter(layer_ctx, requires_grad=use_autograd)
             W_param = torch.nn.Parameter(layer_W, requires_grad=False)
             bias_param = torch.nn.Parameter(layer_bias, requires_grad=False)
             if self.hparams["gpu"]:
@@ -169,4 +156,3 @@ class GLNModel(OVAModel):
             self.W.append(W_param)
             self.opt.append(layer_opt)
             self.biases.append(bias_param)
-            self.bmap = bmap

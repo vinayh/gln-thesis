@@ -26,6 +26,13 @@ class OVAModel(LightningModule):
         self.val_accuracy = Accuracy()
         self.test_accuracy = Accuracy()
         self.datamodule = self.hparams["datamodule"]
+        self.t = 0
+        self.criterion = torch.nn.CrossEntropyLoss()
+        self.binary_criterion = torch.nn.BCEWithLogitsLoss()
+        self.hparams.device = self.device
+        self.layer_sizes = self.layer_sizes_tuple(self.hparams)
+        X_all, y_all_ova = None, None
+        self.init_params(X_all=X_all, y_all=y_all_ova)
 
         self.metric_hist = {
             "train/acc": [],
@@ -74,26 +81,6 @@ class OVAModel(LightningModule):
             [BinaryGLN]: List of instances of a binary module (BinaryGLN, ...)
                          which will each be trained for a binary one-vs-all task
         """
-        return NotImplementedError
-
-    def forward(self, x: torch.Tensor, y: torch.Tensor, is_train: bool):
-        """[summary]
-
-        Args:
-            x (torch.Tensor): [description]
-            y (torch.Tensor): [description]
-            is_train (bool): [description]
-
-        Returns:
-            [type]: [description]
-        """
-        # with torch.no_grad():
-        # y_ova = to_one_vs_all(y, self.num_classes, self.device)
-        # outputs = [
-        #     self.models[i].forward(x, y_ova[i], is_train)
-        #     for i in range(self.num_classes)
-        # ]
-        # return torch.stack(outputs).T.squeeze(0)
         return NotImplementedError
 
     def training_step(self, batch: Any, batch_idx: int):
@@ -166,3 +153,51 @@ class OVAModel(LightningModule):
             X_all = None
             y_all_ova = [0] * self.num_classes
         return X_all, y_all_ova
+
+    def init_params(self, X_all=None, y_all=None):
+        return NotImplementedError
+
+    def base_layer(self, s_i):
+        return NotImplementedError
+
+    def gated_layer(
+        self, logit_x, s, y, l_idx, is_train, use_autograd=False,
+    ):
+        return NotImplementedError
+
+    def forward_helper(self, s_i, y_i, is_train):
+        return NotImplementedError
+
+    def forward(self, batch: Any, is_train=False):
+        self.hparams.device = self.device
+        x, y = batch
+        y_ova = to_one_vs_all(y, self.num_classes, self.device).permute(1, 0)
+        s = x.flatten(start_dim=1)
+        s = torch.cat([s, torch.ones_like(s[:, :1])], dim=1)  # Add bias
+
+        x = [
+            self.forward_helper(s[i, :].unsqueeze(0), y_ova[i, :], is_train=is_train)
+            for i in range(s.shape[0])
+        ]
+
+        logits = torch.sigmoid(torch.stack(x).squeeze(2).type_as(s))
+        loss = self.criterion(logits, y)
+        acc = self.train_accuracy(torch.argmax(logits, dim=1), y)
+        return loss, acc
+
+    @staticmethod
+    def lr(hparams, t):
+        if hparams["dynamic_lr"]:
+            return min(hparams["lr"], hparams["lr"] / (1.0 + 1e-3 * t))
+        else:
+            return hparams["lr"]
+
+    # For training in forward():
+    @staticmethod
+    def autograd_fn(h_updated, y_i, opt_i_layer):
+        L1_loss_fn = torch.nn.L1Loss(reduction="sum")
+        layer_logits_updated = torch.sigmoid(h_updated)
+        loss = L1_loss_fn(layer_logits_updated.T, y_i)
+        opt_i_layer.zero_grad()
+        loss.backward()
+        opt_i_layer.step()
