@@ -21,6 +21,7 @@ class OVAModel(LightningModule):
         self.num_classes = self.hparams["num_classes"]
         self.models = self.get_models(self.hparams["gpu"])
         self.added_graph = False
+        self.y_all_ova = [0] * self.num_classes
         # Example input array for TensorBoard logger
         self.train_accuracy = Accuracy()
         self.val_accuracy = Accuracy()
@@ -31,8 +32,15 @@ class OVAModel(LightningModule):
         self.binary_criterion = torch.nn.BCEWithLogitsLoss()
         self.hparams.device = self.device
         self.layer_sizes = self.layer_sizes_tuple(self.hparams)
-        X_all, y_all_ova = None, None
-        self.init_params(X_all=X_all, y_all=y_all_ova)
+        self.pretrain_complete = False
+        self.X_all, self.y_all = None, None
+        if (
+            self.hparams["plot"]
+            or self.hparams["ctx_evol_batch"]
+            or self.hparams["ctx_evol_pretrain"]
+        ):
+            self.X_all, self.y_all_ova = self.get_full_dataset()
+        self.init_params()
 
         self.metric_hist = {
             "train/acc": [],
@@ -144,15 +152,15 @@ class OVAModel(LightningModule):
         # return optimizers
         pass
 
-    def get_plot_data(self):
-        if self.hparams["plot"]:
-            datamodule = self.hparams["datamodule"]
-            X_all, y_all = datamodule.get_all_data()
-            y_all_ova = to_one_vs_all(y_all, self.num_classes)
+    def get_full_dataset(self):
+        datamodule = self.hparams["datamodule"]
+        X_all, y_all = datamodule.get_all_data()
+        X_all = torch.cat([X_all, torch.ones_like(X_all[:, :1])], dim=1)
+        y_all_ova = to_one_vs_all(y_all, self.num_classes)
+        if self.hparams.gpu:
+            return X_all.cuda(), y_all_ova.cuda()
         else:
-            X_all = None
-            y_all_ova = [0] * self.num_classes
-        return X_all, y_all_ova
+            return X_all, y_all_ova
 
     def init_params(self, X_all=None, y_all=None):
         return NotImplementedError

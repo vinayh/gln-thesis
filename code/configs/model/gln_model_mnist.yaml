@@ -13,7 +13,7 @@ pred_clip: 1e-5
 # pred_clip: 0
 w_clip: 5
 base_bias: false
-ctx_bias: false
+ctx_bias: true
 
 # lr: 0.20
 lr: 1e-3
@@ -23,4 +23,7 @@ weight_decay: 0.0005
 gpu: false
 svm_context: false
 plot: false
-train_autograd_params: false
+# train_autograd_params: false
+ctx_evol_batch: false
+ctx_evol_pretrain: true
+# train_evol_sample: false

@@ -1,6 +1,6 @@
 import torch
 
-import src.models.modules.rand_halfspace_dgn as rand_hspace_dgn
+import src.models.modules.rand_halfspace_dgn_OLD as rand_hspace_dgn
 
 from src.utils.helpers import nan_inf_in_tensor, logit
 

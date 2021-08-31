@@ -1,4 +1,4 @@
-_target_: src.models.dgn_model.DGNModel
+_target_: src.models.dgn_model_OLD.DGNModel
 
 input_size: 784
 lin1_size: 16
@@ -14,7 +14,7 @@ pred_clip: 1e-5
 weight_clipping: 5
 
 # lr: 0.20
-lr: 1e-3
+lr: 5e-3
 lr_autograd: 1e-3
 dynamic_lr: false
 

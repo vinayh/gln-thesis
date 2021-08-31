@@ -98,7 +98,7 @@
             "program": "${workspaceFolder}/code/run.py",
             "args": [
                 "trainer=debug_trainer",
-                "model=dgn_model_mnist",
+                "model=dgn_model_OLD_mnist",
                 "datamodule=mnist_datamodule",
                 "logger=tensorboard",
                 "datamodule.deskew=true",
@@ -106,7 +106,7 @@
                 "model.gpu=true"
             ],
             "env": {
-                "CUDA_VISIBLE_DEVICES": "5,6"
+                "CUDA_VISIBLE_DEVICES": "2,5,6"
             }
         },
         {
