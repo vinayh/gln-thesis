@@ -39,10 +39,7 @@ class PretrainDataModule(LightningDataModule):
         - get_pretrained()
     """
 
-    def __init__(
-        self,
-        data_dir: str
-    ):
+    def __init__(self, data_dir: str):
         super().__init__()
 
         self.data_dir = data_dir
@@ -88,57 +85,63 @@ class PretrainDataModule(LightningDataModule):
     def get_all_data(self, include_test=False):
         self.setup()
         self.prepare_data()
-        loader = DataLoader(dataset=self.data_train,
-                            batch_size=len(self.data_train),
-                            shuffle=False)
+        loader = DataLoader(
+            dataset=self.data_train, batch_size=len(self.data_train), shuffle=False
+        )
         X, y = next(iter(loader))
         return X.flatten(start_dim=1), y
 
     def get_svm_boundary(self, X, y):
-        X, y = np.array(X), np.array(y)
+        X, y = np.array(X.cpu()), np.array(y.cpu())
         svm = LinearSVC(dual=False)
         svm.fit(X, y)
         boundary = torch.from_numpy(np.append(svm.coef_, svm.intercept_))
         incorrect = torch.from_numpy(svm.predict(X) != y)
         return boundary, incorrect
 
-    def get_pretrained_helper(self, num_classes):
-        self.X_all, self.y_all = self.get_all_data(include_test=False)
-        self.y_all_ova = to_one_vs_all(self.y_all, num_classes)
+    def get_pretrained_helper(self, X_all, y_all_ova, num_classes):
         num_layers = 3
-        pretrained = torch.zeros(num_classes,
-                                 num_layers,
-                                 self.X_all.shape[1] + 1)
+        pretrained = torch.zeros(num_classes, num_layers, X_all.shape[1] + 1)
         for i in range(num_classes):
-            print('Pretraining for class: {}'.format(i))
+            print("Pretraining for class: {}".format(i))
             # Start with all samples assumed to be incorrectly classified
-            incorrect = torch.ones(self.X_all.shape[0], dtype=torch.uint8)
+            incorrect = torch.ones(X_all.shape[0], dtype=torch.uint8)
             num_incorrect = torch.sum(incorrect)
-            X, y = self.X_all, self.y_all_ova[i]
+            X, y = X_all, y_all_ova[i]
             for k in range(num_layers):
                 if num_incorrect == 0:  # If all correctly classified
                     break
                 # Train on only previously incorrectly classified samples
                 X, y = X[incorrect, :], y[incorrect]
                 if len(torch.unique(y)) == 1:  # If all in same class
-                    print('\tNot training layer: {} (remaining samples in same class), incorrect remaining: {}'
-                          .format(k, num_incorrect))
+                    print(
+                        "\tNot training layer: {} (remaining samples in same class), incorrect remaining: {}".format(
+                            k, num_incorrect
+                        )
+                    )
                     break
                 boundary, incorrect = self.get_svm_boundary(X, y)
                 pretrained[i, k, :] = boundary
                 num_incorrect = torch.sum(incorrect)
-                print('\tTrained layer: {}, incorrect remaining: {}'
-                      .format(k, num_incorrect))
+                print(
+                    "\tTrained layer: {}, incorrect remaining: {}".format(
+                        k, num_incorrect
+                    )
+                )
         return pretrained
 
-    def get_pretrained(self, num_classes, model_name, use_saved_svm=False):
-        filepath = join(self.data_dir, 'pretrained_{}_{}_coef.pt'
-                        .format(self.dataset_name, model_name))
-        if use_saved_svm:
-            print('Loading previously saved SVM-based contexts')
-            pretrained = torch.load(filepath)
-        else:
-            print('Training SVM models on dataset to generate SVM-based contexts')
-            pretrained = self.get_pretrained_helper(num_classes)
+    def get_pretrained(
+        self, X_all, y_all_ova, num_classes, model_name="", force_redo=False
+    ):
+        filepath = join(
+            self.data_dir,
+            "pretrained_{}_{}_coef.pt".format(self.dataset_name, model_name),
+        )
+        if force_redo:
+            print("Training SVM models on dataset to generate SVM-based contexts")
+            pretrained = self.get_pretrained_helper(X_all, y_all_ova, num_classes)
             torch.save(pretrained, filepath)
+        else:
+            print("Loading previously saved SVM-based contexts")
+            pretrained = torch.load(filepath)
         return pretrained

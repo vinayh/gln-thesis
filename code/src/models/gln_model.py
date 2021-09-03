@@ -5,7 +5,9 @@ from typing import Any
 
 from src.models.ova_model import OVAModel
 from src.utils.helpers import to_one_vs_all
-from src.utils.helpers import logit, nan_inf_in_tensor
+from src.utils.helpers import logit, nan_inf_in_tensor, entropy
+
+# from src.models.modules.pretrain import pretrain_svm_helper
 import src.models.modules.rand_halfspace_gln as rand_hspace_gln
 
 
@@ -97,12 +99,6 @@ class GLNModel(OVAModel):
                 raise NotImplementedError
         return x_i
 
-    def pretrain(self):
-        if self.hparams["ctx_evol_pretrain"]:
-            for l_idx in range(len(self.layer_sizes)):
-                self.ctx[l_idx] = self.ctx_evol_pretrain(self.ctx[l_idx])
-        self.pretrain_complete = True
-
     def forward(self, batch: Any, is_train=False):
         # Pretraining
         if not self.pretrain_complete:
@@ -124,66 +120,14 @@ class GLNModel(OVAModel):
         acc = self.train_accuracy(torch.argmax(logits, dim=1), y)
         return loss, acc
 
-    def ctx_fitness_pretrain(self, ctx):
-        output_dim = ctx.shape[2]
-        # c: [num_samples, num_classes, output_dim]
-        c = torch.stack(
-            [
-                rand_hspace_gln.calc(X_i, ctx, self.bmap, self.hparams["gpu"])
-                for X_i in self.X_all
-            ]
-        )
-        # Calculate initial entropy without context functions
-        num_total = self.y_all_ova.shape[1]
-        entropies = torch.zeros(self.num_classes).type_as(ctx)
-        for i in range(self.num_classes):
-            num_true = torch.sum(self.y_all_ova[i])
-            p_true = num_true / num_total
-            p_false = (num_total - num_true) / num_total
-            entropies[i] = p_true * torch.log(p_true) + p_false * torch.log(p_false)
-
-        fitness = torch.zeros(output_dim, self.num_classes).type_as(ctx)
-        for k in range(output_dim):  # For each neuron/output_dim
-            for i in range(self.num_classes):  # For each class
-                fitness[k, i] = entropies[i]  # Set to init entropy without ctx fn
-                y_all = self.y_all_ova[i, :]
-                for j in range(self.num_contexts):
-                    idx = (c[:, i, k] == torch.tensor(j)).nonzero().flatten()
-                    num_in_ctx = len(idx)
-                    num_true = torch.sum(y_all[idx])
-                    p_true = num_true / num_in_ctx
-                    p_false = (num_in_ctx - num_true) / num_in_ctx
-                    if p_true != 0 and p_false != 0:
-                        delta = p_true * torch.log(p_true) + p_false * torch.log(
-                            p_false
-                        )
-                    else:
-                        delta = 0
-                    fitness[k, i] -= delta
-                    if fitness[k, i].isnan():
-                        raise Exception
-        return fitness  # Sum over classes to get fitness of neurons
-
-    def ctx_evol_pretrain(self, ctx):
-        assert self.X_all is not None
-        N = 10  # Number of iterations
-        n = 10  # Number of episodes
-        lr = 0.01  # Learning rate
-        sigma = 0.1  # Noise std
-        output_dim = ctx.shape[2]
-        for t in range(N):
-            eps = torch.zeros(n, *ctx.shape).type_as(ctx).normal_(mean=0, std=1)
-            F = torch.zeros(n, output_dim, self.num_classes).type_as(ctx)
-            for v in range(n):
-                F[v] = self.ctx_fitness_pretrain(ctx + sigma * eps[v])
-                # delta = torch.sum(torch.bmm(eps, F), dim=1)
-                for k in range(output_dim):
-                    for i in range(self.num_classes):
-                        ctx[i, :, k, :] = (
-                            ctx[i, :, k, :]
-                            + (lr / (n * sigma)) * F[v, k, i] * eps[v, i, :, k, :]
-                        )
-        # TODO: Check and fix above, try implementing evol method in batch
+    def pretrain(self):
+        if self.hparams["ctx_evol_pretrain"]:
+            for l_idx in range(len(self.ctx)):
+                self.ctx[l_idx] = self.gln_evol_pretrain(self.ctx[l_idx])
+        elif self.hparams["ctx_svm_pretrain"]:
+            for l_idx in range(len(self.ctx)):
+                self.ctx[l_idx] = self.gln_svm_pretrain(self.ctx[l_idx])
+        self.pretrain_complete = True
 
     def init_params(self):
         self.ctx, self.W, self.opt, self.biases = [], [], [], []
@@ -229,3 +173,73 @@ class GLNModel(OVAModel):
             # self.opt.append(layer_opt)
             self.biases.append(bias_param)
             self.bmap = bmap
+
+    ###
+    # Pretraining methods
+    ###
+
+    def gln_svm_pretrain(self, ctx):
+        pretrained = self.datamodule.get_pretrained(
+            self.X_all,
+            self.y_all_ova,
+            self.hparams.num_classes,
+            model_name="GLN",
+            force_redo=self.hparams.ctx_svm_pretrain_force_redo,
+        )
+
+    def gln_evol_fitness(self, ctx):
+        output_dim = ctx.shape[2]
+        # c: [num_samples, num_classes, output_dim]
+        c = torch.stack(
+            [
+                rand_hspace_gln.calc(X_i, ctx, self.bmap, self.hparams["gpu"])
+                for X_i in self.X_all
+            ]
+        )
+        # Calculate initial entropy without context functions
+        num_total = self.y_all_ova.shape[1]
+        entropies = torch.zeros(self.num_classes).type_as(ctx)
+        for i in range(self.num_classes):
+            num_true = torch.sum(self.y_all_ova[i])
+            entropies[i] = entropy(num_true / num_total)
+
+        fitness = torch.zeros(output_dim, self.num_classes).type_as(ctx)
+        for k in range(output_dim):  # For each neuron/output_dim
+            # print("ctx_evol_pretrain: - Neuron {}".format(k))
+            for i in range(self.num_classes):  # For each class
+                fitness[k, i] = entropies[i]  # Set to init entropy without ctx fn
+                y_all = self.y_all_ova[i, :]
+                for j in range(self.num_contexts):
+                    idx = (c[:, i, k] == torch.tensor(j)).nonzero().flatten()
+                    num_in_ctx = len(idx)
+                    p_true = torch.sum(y_all[idx]) / num_in_ctx
+                    fitness[k, i] -= entropy(p_true)
+                    if fitness[k, i].isnan():
+                        raise Exception
+        return fitness  # Sum over classes to get fitness of neurons
+
+    def gln_evol_pretrain(self, ctx):
+        assert self.X_all is not None
+        N = 10  # Number of iterations
+        n = 10  # Number of episodes
+        lr = 0.01  # Learning rate
+        sigma = 0.1  # Noise std
+        output_dim = ctx.shape[2]
+        for t in range(N):
+            print("ctx_evol_pretrain: Evol. iteration {}".format(t))
+            eps = torch.zeros(n, *ctx.shape).type_as(ctx).normal_(mean=0, std=1)
+            F = torch.zeros(n, output_dim, self.num_classes).type_as(ctx)
+            for num_ep in range(n):
+                print("ctx_evol_pretrain: - Episode {}".format(num_ep))
+                F[num_ep] = self.gln_evol_fitness(ctx + sigma * eps[num_ep])
+                # delta = torch.sum(torch.bmm(eps, F), dim=1)
+                for k in range(output_dim):
+                    for i in range(self.num_classes):
+                        ctx[i, :, k, :] = (
+                            ctx[i, :, k, :]
+                            + (lr / (n * sigma))
+                            * F[num_ep, k, i]
+                            * eps[num_ep, i, :, k, :]
+                        )
+        # TODO: Check and fix above, try implementing evol method in batch
+        return ctx

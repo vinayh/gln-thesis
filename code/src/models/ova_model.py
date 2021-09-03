@@ -38,6 +38,7 @@ class OVAModel(LightningModule):
             self.hparams["plot"]
             or self.hparams["ctx_evol_batch"]
             or self.hparams["ctx_evol_pretrain"]
+            or self.hparams["ctx_svm_pretrain_force_redo"]
         ):
             self.X_all, self.y_all_ova = self.get_full_dataset()
         self.init_params()

@@ -1,4 +1,11 @@
+from argparse import ArgumentError
 import torch
+
+
+def entropy(p):
+    if p == 0.0 or p == 1.0 or p.isnan():
+        return torch.tensor(0)
+    return p * torch.log(p) + (1 - p) * torch.log(1 - p)
 
 
 def logit(x):
