@@ -42,10 +42,11 @@ def calc(s, ctx_weights, bitwise_map, gpu=False):
     """
     # Get 0 or 1 based on sign of each input sample with respect to each subctx
     subctx_sign = StraightThroughEstimator.apply(calc_raw(s, ctx_weights))
-    if gpu:
-        return bitwise_map.float().matmul(subctx_sign).long()
-    else:
-        return bitwise_map.long().matmul(subctx_sign)
+    return bitwise_map.float().matmul(subctx_sign).long()
+    # if gpu:
+    #     return bitwise_map.float().matmul(subctx_sign).long()
+    # else:
+    #     return bitwise_map.matmul(subctx_sign)
 
 
 def calc_raw(s, ctx_weights):

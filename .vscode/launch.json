@@ -128,6 +128,19 @@
             }
         },
         {
+            "name": "Train GLN - Debug, MNIST",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": [
+                "trainer=debug_trainer",
+                "model=gln_model_mnist",
+                "datamodule=mnist_datamodule",
+                "logger=tensorboard",
+                "datamodule.deskew=false",
+            ]
+        },
+        {
             "name": "Train GLN - Debug, GPU, CIFAR10",
             "type": "python",
             "request": "launch",
@@ -177,6 +190,20 @@
             }
         },
         {
+            "name": "Train GLN - Debug, FashionMNIST",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": [
+                "trainer=debug_trainer",
+                "model=gln_model_mnist",
+                "datamodule=mnist_datamodule",
+                "logger=tensorboard",
+                "datamodule.deskew=false",
+                "datamodule.fashionmnist=true"
+            ],
+        },
+        {
             "name": "Train GLN - Debug, GPU, FashionMNIST",
             "type": "python",
             "request": "launch",
@@ -194,6 +221,20 @@
             "env": {
                 "CUDA_VISIBLE_DEVICES": "2,5,6"
             }
+        },
+        {
+            "name": "Train GLN - Debug, deskewed FashionMNIST",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": [
+                "trainer=debug_trainer",
+                "model=gln_model_mnist",
+                "datamodule=mnist_datamodule",
+                "datamodule.fashionmnist=true",
+                "logger=tensorboard",
+                "datamodule.deskew=true",
+            ],
         },
         {
             "name": "Train GLN - Debug, GPU, deskewed FashionMNIST",

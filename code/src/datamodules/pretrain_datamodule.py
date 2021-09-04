@@ -92,7 +92,7 @@ class PretrainDataModule(LightningDataModule):
         return X.flatten(start_dim=1), y
 
     def get_svm_boundary(self, X, y):
-        X, y = np.array(X.cpu()), np.array(y.cpu())
+        X, y = X.cpu().numpy(), y.cpu().numpy()
         svm = LinearSVC(dual=False)
         svm.fit(X, y)
         boundary = torch.from_numpy(np.append(svm.coef_, svm.intercept_))
@@ -101,7 +101,7 @@ class PretrainDataModule(LightningDataModule):
 
     def get_pretrained_helper(self, X_all, y_all_ova, num_classes):
         num_layers = 3
-        pretrained = torch.zeros(num_classes, num_layers, X_all.shape[1] + 1)
+        pretrained = torch.zeros(num_classes, num_layers, X_all.shape[1]+1)
         for i in range(num_classes):
             print("Pretraining for class: {}".format(i))
             # Start with all samples assumed to be incorrectly classified
@@ -139,7 +139,8 @@ class PretrainDataModule(LightningDataModule):
         )
         if force_redo:
             print("Training SVM models on dataset to generate SVM-based contexts")
-            pretrained = self.get_pretrained_helper(X_all, y_all_ova, num_classes)
+            pretrained = self.get_pretrained_helper(
+                X_all, y_all_ova, num_classes)
             torch.save(pretrained, filepath)
         else:
             print("Loading previously saved SVM-based contexts")
