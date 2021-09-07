@@ -174,11 +174,10 @@ class GLNModel(OVAModel):
             for l_idx in range(len(self.ctx)):
                 self.ctx[l_idx] = self.gln_evol_pretrain(self.ctx[l_idx])
         elif self.hparams["ctx_svm_pretrain"]:
-            for l_idx in range(len(self.ctx)):
-                self.ctx[l_idx] = self.gln_svm_pretrain(self.ctx[l_idx])
+            self.gln_svm_pretrain()
         self.pretrain_complete = True
 
-    def gln_svm_pretrain(self, ctx):
+    def gln_svm_pretrain(self):
         pretrained = self.datamodule.get_pretrained(
             self.X_all,
             self.y_all_ova,
@@ -186,6 +185,20 @@ class GLNModel(OVAModel):
             model_name="GLN",
             force_redo=self.hparams.ctx_svm_pretrain_force_redo,
         )
+        for l_idx in range(self.hparams["num_layers_used"]):
+            # Alt 1: for each layer, set a neuron's first hyperplane to pretrained weights
+            # self.ctx[l_idx][:, 0, 0, :] = pretrained[:, l_idx, :]
+
+            # Alt: set all pretrained hyperplanes to one neuron in each binary classifier
+            if self.ctx[l_idx].shape[2] >= self.num_classes:
+                pretrained_exp = (
+                    pretrained[:, l_idx, :]
+                    .unsqueeze(1)
+                    .expand(-1, self.num_classes, -1)
+                )
+                self.ctx[l_idx][:, 0, : self.num_classes, :] = pretrained_exp
+            else:
+                self.ctx[l_idx][:, 0, 0, :] = pretrained[:, l_idx, :]
 
     def gln_evol_fitness(self, ctx):
         output_dim = ctx.shape[2]
@@ -207,7 +220,8 @@ class GLNModel(OVAModel):
         for k in range(output_dim):  # For each neuron/output_dim
             # print("ctx_evol_pretrain: - Neuron {}".format(k))
             for i in range(self.num_classes):  # For each class
-                fitness[k, i] = entropies[i]  # Set to init entropy without ctx fn
+                # Set to init entropy without ctx fn
+                fitness[k, i] = entropies[i]
                 y_all = self.y_all_ova[i, :]
                 for j in range(self.num_contexts):
                     idx = (c[:, i, k] == torch.tensor(j)).nonzero().flatten()
@@ -220,6 +234,7 @@ class GLNModel(OVAModel):
 
     def gln_evol_pretrain(self, ctx):
         assert self.X_all is not None
+        self.X_all = torch.cat([self.X_all, torch.ones_like(self.X_all[:, :1])], dim=1)
         N = 10  # Number of iterations
         n = 10  # Number of episodes
         lr = 0.01  # Learning rate

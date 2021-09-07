@@ -40,7 +40,10 @@ class MNISTDataModule(PretrainDataModule):
     ):
         super().__init__(**kwargs)
 
-        self.dataset_name = "mnist"
+        name1 = "fashionmnist" if fashionmnist else "mnist"
+        name2 = "deskew" if deskew else ""
+        self.dataset_name = name1 + name2
+
         self.train_val_test_split = train_val_test_split
         self.batch_size = batch_size
         self.num_workers = num_workers
