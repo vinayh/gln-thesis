@@ -27,5 +27,5 @@ plot: false
 ctx_evol_batch: false
 ctx_evol_pretrain: false
 # train_evol_sample: false
-ctx_svm_pretrain: true
-ctx_svm_pretrain_force_redo: true
+ctx_svm_pretrain: false
+ctx_svm_pretrain_force_redo: false

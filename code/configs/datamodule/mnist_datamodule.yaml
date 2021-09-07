@@ -2,7 +2,7 @@ _target_: src.datamodules.mnist_datamodule.MNISTDataModule
 
 data_dir: ${data_dir} # data_dir is specified in config.yaml
 batch_size: 64
-train_val_test_split: [59_990, 10, 10_000]
+train_val_test_split: [50_000, 10_000, 10_000]
 num_workers: 0
 pin_memory: False
 deskew: False

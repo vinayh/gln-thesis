@@ -1,4 +1,4 @@
-_target_: src.models.dgn_model_OLD.DGNModel
+_target_: src.models.dgn_model_SINGLE.DGNModel
 
 input_size: 784
 lin1_size: 16
@@ -22,8 +22,13 @@ weight_decay: 0.0005
 ctx_bias: false
 base_bias: false
 pretrained_ctx: false
+ctx_evol_batch: false
+ctx_evol_pretrain: false
+ctx_svm_pretrain_force_redo: false
 gpu: false
 svm_context: false
 plot: false
-train_autograd_params: true
-autograd_weights: true
+autograd_local: false
+autograd_local_w: false
+autograd_global: true
+autograd_global_w: false

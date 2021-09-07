@@ -38,8 +38,8 @@ class GLNModel(OVAModel):
         # c: [num_classes, output_dim]
         c = rand_hspace_gln.calc(s, self.ctx[l_idx], self.bmap, self.hparams["gpu"])
         # layer_bias = e / (e + 1)  # TODO: bias
-        if nan_inf_in_tensor(logit_x):
-            raise Exception
+        # if nan_inf_in_tensor(logit_x):
+        #     raise Exception
         # w_ctx: [num_classes, output_dim, input_dim]
         w_ctx = self.W[l_idx][
             torch.arange(num_classes).reshape(-1, 1),
@@ -47,16 +47,16 @@ class GLNModel(OVAModel):
             torch.arange(output_dim).reshape(1, -1),
             :,
         ]
-        if nan_inf_in_tensor(w_ctx):
-            raise Exception
+        # if nan_inf_in_tensor(w_ctx):
+        #     raise Exception
         # logit_x_out: [num_classes, output_dim]
         logit_x_out = torch.bmm(w_ctx, logit_x.unsqueeze(2)).squeeze(2)
         # Clamp to pred_clip
         logit_x_out = torch.clamp(
             logit_x_out, min=logit(self.p_clip), max=logit(1 - self.p_clip),
         )
-        if nan_inf_in_tensor(logit_x_out):
-            raise Exception
+        # if nan_inf_in_tensor(logit_x_out):
+        #     raise Exception
         if is_train:
             # loss: [batch_size, output_layer_dim]
             loss = torch.sigmoid(logit_x_out) - y.unsqueeze(1)
@@ -67,8 +67,8 @@ class GLNModel(OVAModel):
                 min=-self.hparams["w_clip"],
                 max=self.hparams["w_clip"],
             )
-            if nan_inf_in_tensor(w_new):
-                raise Exception
+            # if nan_inf_in_tensor(w_new):
+            #     raise Exception
             # [num_classes, output_dim, input_dim]
             with torch.no_grad():
                 self.W[l_idx][
@@ -95,8 +95,8 @@ class GLNModel(OVAModel):
         # Gated layers
         for l_idx in range(self.hparams["num_layers_used"]):
             x_i, x_updated = self.gated_layer(x_i, s_i, y_i, l_idx, is_train=is_train)
-            if is_train and self.hparams["train_evol_sample"]:
-                raise NotImplementedError
+            # if is_train and self.hparams["train_evol_sample"]:
+            #     raise NotImplementedError
         return x_i
 
     def forward(self, batch: Any, is_train=False):
@@ -119,15 +119,6 @@ class GLNModel(OVAModel):
         loss = self.criterion(logits, y)
         acc = self.train_accuracy(torch.argmax(logits, dim=1), y)
         return loss, acc
-
-    def pretrain(self):
-        if self.hparams["ctx_evol_pretrain"]:
-            for l_idx in range(len(self.ctx)):
-                self.ctx[l_idx] = self.gln_evol_pretrain(self.ctx[l_idx])
-        elif self.hparams["ctx_svm_pretrain"]:
-            for l_idx in range(len(self.ctx)):
-                self.ctx[l_idx] = self.gln_svm_pretrain(self.ctx[l_idx])
-        self.pretrain_complete = True
 
     def init_params(self):
         self.ctx, self.W, self.opt, self.biases = [], [], [], []
@@ -177,6 +168,15 @@ class GLNModel(OVAModel):
     ###
     # Pretraining methods
     ###
+
+    def pretrain(self):
+        if self.hparams["ctx_evol_pretrain"]:
+            for l_idx in range(len(self.ctx)):
+                self.ctx[l_idx] = self.gln_evol_pretrain(self.ctx[l_idx])
+        elif self.hparams["ctx_svm_pretrain"]:
+            for l_idx in range(len(self.ctx)):
+                self.ctx[l_idx] = self.gln_svm_pretrain(self.ctx[l_idx])
+        self.pretrain_complete = True
 
     def gln_svm_pretrain(self, ctx):
         pretrained = self.datamodule.get_pretrained(

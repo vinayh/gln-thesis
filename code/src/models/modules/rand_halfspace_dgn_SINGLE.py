@@ -16,17 +16,13 @@ def get_params(hparams, layer_size, device=None):
     """
     num_features = hparams["input_size"] + 1
     # pretrained_ctx = hparams["pretrained_ctx"]
-    if hparams.gpu:
-        hyperplanes = torch.empty(
-            layer_size, hparams["num_branches"], num_features
-        ).cuda()
-    else:
-        hyperplanes = torch.empty(layer_size, hparams["num_branches"], num_features)
-    hyperplanes.normal_(mean=0, std=1.0)
+    hyperplanes = torch.empty(
+        hparams["num_classes"], layer_size, hparams["num_branches"], num_features
+    ).normal_(mean=0, std=1.0)
     if hparams["ctx_bias"]:
-        hyperplanes[:, :, -1].normal_(mean=0, std=0.5)
+        hyperplanes[:, :, :, -1].normal_(mean=0, std=0.5)
     else:
-        hyperplanes[:, :, -1] = 0
+        hyperplanes[:, :, :, -1] = 0
     # hyperplanes = (
     #     hyperplanes
     #     / torch.linalg.norm(hyperplanes[:, :, :-1], axis=(1, 2))[:, None, None]
@@ -48,7 +44,7 @@ def calc(s, hyperplanes):
     """
     # product = torch.einsum('abc,dc->dba', hyperplanes, s)
     # with torch.no_grad():
-    product = hyperplanes.matmul(s.T).permute(2, 1, 0)
+    product = hyperplanes.matmul(s)
 
     # Straight-through estimator
     return StraightThroughEstimator.apply(product)
@@ -56,12 +52,12 @@ def calc(s, hyperplanes):
     # return (hyperplanes.matmul(s.permute(1, 0)).permute(2, 1, 0) > 0).bool()
 
 
-def calc_raw(X_all, hyperplanes):
-    """Calculate raw values for plotting decision boundary
+# def calc_raw(X_all, hyperplanes):
+#     """Calculate raw values for plotting decision boundary
 
-    Args:
-        X_all ([Float * [batch_size, num_features]]): All input samples X
-        hyperplanes ([Float * [layer_size, num_branches, num_features]]): Weights of hyperplanes
-    """
-    return hyperplanes.matmul(X_all.permute(1, 0)).permute(2, 1, 0)
-    # return torch.einsum('abc,dc->dba', hyperplanes, X_all)
+#     Args:
+#         X_all ([Float * [batch_size, num_features]]): All input samples X
+#         hyperplanes ([Float * [layer_size, num_branches, num_features]]): Weights of hyperplanes
+#     """
+#     return hyperplanes.matmul(X_all.permute(1, 0)).permute(2, 1, 0)
+#     # return torch.einsum('abc,dc->dba', hyperplanes, X_all)

@@ -1,6 +1,7 @@
 # From PyGLN project
 # Adapted from https://fsix.github.io/mnist/
 
+import torch
 import numpy as np
 from scipy.ndimage import interpolation
 
@@ -29,7 +30,9 @@ def deskew_fn(image):
     ocenter = np.array(image.shape) / 2.0
     offset = c - np.dot(affine, ocenter)
     transformed = interpolation.affine_transform(image, affine, offset=offset)
-    return np.expand_dims(transformed, 0)
+    img = torch.tensor(np.expand_dims(transformed, 0))
+    scaled = (img - img.min()) / (img.max() - img.min())
+    return scaled
 
 
 def deskewAll(X):

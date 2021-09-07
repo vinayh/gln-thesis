@@ -19,7 +19,7 @@ transforms_default = transforms.Compose(
 )
 
 transforms_deskew = transforms.Compose(
-    [transforms.ToTensor(), transforms.Lambda(deskew_fn), transforms.ToTensor()]
+    [transforms.ToTensor(), transforms.Lambda(deskew_fn)]
 )
 
 transforms_normalize = transforms.Compose(

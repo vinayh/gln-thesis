@@ -23,7 +23,7 @@ class ToyClusteringDataModule(PretrainDataModule):
     ):
         super().__init__(data_dir=data_dir)
 
-        self.dataset_name = 'toyclustering'
+        self.dataset_name = "toyclustering"
         self.data_dir = data_dir
         self.num_samples = num_samples
         self.train_val_test_split = train_val_test_split
@@ -35,20 +35,20 @@ class ToyClusteringDataModule(PretrainDataModule):
         np.random.seed(42)
         centroids = np.random.rand(num_classes, dim)
         centroids[0] = np.mean(centroids[1:], axis=0)
+        # Scale and center centroids
         centroids = 20 * (centroids - np.mean(centroids, axis=0))
-        data = np.zeros((num_samples, dim+1))
+        data = np.zeros((num_samples, dim + 1))
         added = 0
         for i, c in enumerate(centroids):
-            if i == len(centroids)-1:
+            if i == len(centroids) - 1:  # If last centroid
                 num_to_add = num_samples - added
             else:
-                num_to_add = int(num_samples/num_classes)
-            new_data = i * np.ones((num_to_add, dim+1))
-            new_data[:, :dim] = np.random.multivariate_normal(mean=c,
-                                                              cov=0.75 *
-                                                              np.eye(dim),
-                                                              size=num_to_add)
-            data[added:added+num_to_add, :] = new_data
+                num_to_add = int(num_samples / num_classes)
+            new_data = i * np.ones((num_to_add, dim + 1))
+            new_data[:, :dim] = np.random.multivariate_normal(
+                mean=c, cov=0.75 * np.eye(dim), size=num_to_add
+            )
+            data[added : added + num_to_add, :] = new_data
             added += num_to_add
         np.random.shuffle(data)
         data = torch.from_numpy(data)

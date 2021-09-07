@@ -92,7 +92,7 @@ class PretrainDataModule(LightningDataModule):
         return X.flatten(start_dim=1), y
 
     def get_svm_boundary(self, X, y):
-        X, y = np.array(X.cpu()), np.array(y.cpu())
+        X, y = X.cpu().numpy(), y.cpu().numpy()
         svm = LinearSVC(dual=False)
         svm.fit(X, y)
         boundary = torch.from_numpy(np.append(svm.coef_, svm.intercept_))
