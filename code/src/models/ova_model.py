@@ -40,7 +40,7 @@ class OVAModel(LightningModule):
             or self.hparams["ctx_evol_pretrain"]
             or self.hparams["ctx_svm_pretrain_force_redo"]
         ):
-            self.X_all, self.y_all_ova = self.get_full_dataset()
+            self.X_all, self.y_all, self.y_all_ova = self.get_full_dataset()
         self.init_params()
 
         self.metric_hist = {
@@ -98,7 +98,8 @@ class OVAModel(LightningModule):
         # assert(optimizer_idx is not None)
         loss, acc = self.forward(batch, is_train=True)
         # Log
-        self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
+        self.log("train/loss", loss, on_step=False,
+                 on_epoch=True, prog_bar=False)
         self.log("train/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
         self.log(
             "lr",
@@ -111,25 +112,33 @@ class OVAModel(LightningModule):
 
     def training_epoch_end(self, outputs: List[Any]):
         # log best so far train acc and train loss
-        self.metric_hist["train/acc"].append(self.trainer.callback_metrics["train/acc"])
+        self.metric_hist["train/acc"].append(
+            self.trainer.callback_metrics["train/acc"])
         self.metric_hist["train/loss"].append(
             self.trainer.callback_metrics["train/loss"]
         )
-        self.log("train/acc_best", max(self.metric_hist["train/acc"]), prog_bar=False)
-        self.log("train/loss_best", min(self.metric_hist["train/loss"]), prog_bar=False)
+        self.log("train/acc_best",
+                 max(self.metric_hist["train/acc"]), prog_bar=False)
+        self.log("train/loss_best",
+                 min(self.metric_hist["train/loss"]), prog_bar=False)
 
     def validation_step(self, batch: Any, batch_idx: int):
         loss, acc = self.forward(batch, is_train=False)
-        self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
+        self.log("val/loss", loss, on_step=False,
+                 on_epoch=True, prog_bar=False)
         self.log("val/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
         # return {"loss": loss, "logits_binary": logits_binary, "y_binary": y_binary}
         return {"loss": loss}
 
     def validation_epoch_end(self, outputs: List[Any]):
-        self.metric_hist["val/acc"].append(self.trainer.callback_metrics["val/acc"])
-        self.metric_hist["val/loss"].append(self.trainer.callback_metrics["val/loss"])
-        self.log("val/acc_best", max(self.metric_hist["val/acc"]), prog_bar=False)
-        self.log("val/loss_best", min(self.metric_hist["val/loss"]), prog_bar=False)
+        self.metric_hist["val/acc"].append(
+            self.trainer.callback_metrics["val/acc"])
+        self.metric_hist["val/loss"].append(
+            self.trainer.callback_metrics["val/loss"])
+        self.log("val/acc_best",
+                 max(self.metric_hist["val/acc"]), prog_bar=False)
+        self.log("val/loss_best",
+                 min(self.metric_hist["val/loss"]), prog_bar=False)
 
     def test_step(self, batch: Any, batch_idx: int):
         loss, acc = self.forward(batch, is_train=False)
@@ -161,7 +170,7 @@ class OVAModel(LightningModule):
         if self.hparams.gpu:
             return X_all.cuda(), y_all_ova.cuda()
         else:
-            return X_all, y_all_ova
+            return X_all, y_all, y_all_ova
 
     def init_params(self, X_all=None, y_all=None):
         return NotImplementedError
@@ -185,7 +194,8 @@ class OVAModel(LightningModule):
         s = torch.cat([s, torch.ones_like(s[:, :1])], dim=1)  # Add bias
 
         x = [
-            self.forward_helper(s[i, :].unsqueeze(0), y_ova[i, :], is_train=is_train)
+            self.forward_helper(s[i, :].unsqueeze(
+                0), y_ova[i, :], is_train=is_train)
             for i in range(s.shape[0])
         ]
 

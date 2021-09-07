@@ -23,7 +23,8 @@ def get_params(hparams, layer_size):
             hparams["num_classes"], hparams["num_subcontexts"], layer_size, s_dim
         ).normal_(mean=0, std=1.0)
         if hparams["ctx_bias"]:
-            ctx_weights[:, -1, :].normal_(mean=0, std=0.5)
+            # ctx_weights[:, -1, :].normal_(mean=0, std=0.5)
+            ctx_weights[:, -1, :].uniform_(-2, 2)
         else:
             ctx_weights[:, -1, :] = 0
         return ctx_weights
