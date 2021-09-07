@@ -24,7 +24,10 @@ gpu: false
 svm_context: false
 plot: false
 # train_autograd_params: false
-ctx_evol_batch: false
+
+ctx_evol_batch: true
+evol_num_ep: 10
+
 ctx_evol_pretrain: false
 ctx_evol_sample: false
 # train_evol_sample: false

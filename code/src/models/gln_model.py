@@ -21,7 +21,7 @@ class GLNModel(OVAModel):
         self.plot_idx = 0
 
     def gated_layer(
-        self, logit_x, s, y, l_idx, is_train,
+        self, logit_x, s, y, ctx, l_idx, is_train,
     ):
         """Using provided input activations, context functions, and weights,
         returns the result of the GLN layer
@@ -37,8 +37,7 @@ class GLNModel(OVAModel):
         """
         num_classes, _, output_dim, input_dim = self.W[l_idx].shape
         # c: [num_classes, output_dim]
-        c = rand_hspace_gln.calc(
-            s, self.ctx[l_idx], self.bmap, self.hparams["gpu"])
+        c = rand_hspace_gln.calc(s, ctx[l_idx], self.bmap, self.hparams["gpu"])
         # layer_bias = e / (e + 1)  # TODO: bias
         # if nan_inf_in_tensor(logit_x):
         #     raise Exception
@@ -84,21 +83,21 @@ class GLNModel(OVAModel):
 
     def base_layer(self, s_i):
         # TODO: Try using base_bias params to see if it helps
-        logit_x_out = logit(torch.clamp(
-            s_i, min=self.p_clip, max=1 - self.p_clip))
+        logit_x_out = logit(torch.clamp(s_i, min=self.p_clip, max=1 - self.p_clip))
         logit_x_out = logit_x_out.expand(self.num_classes, -1)
         if self.hparams["base_bias"]:
             return torch.cat([logit_x_out[:, :-1], self.biases])
         else:
             return logit_x_out[:, :-1]
 
-    def forward_helper(self, s_i, y_i=None, is_train=False):
+    def forward_helper(self, ctx, s_i, y_i=None, is_train=False):
         s_i = s_i.squeeze(0)
         x_i = self.base_layer(s_i)
         # Gated layers
         for l_idx in range(self.hparams["num_layers_used"]):
             x_i, x_updated = self.gated_layer(
-                x_i, s_i, y_i, l_idx, is_train=is_train)
+                x_i, s_i, y_i, ctx, l_idx, is_train=is_train
+            )
             # if is_train and self.hparams["train_evol_sample"]:
             #     raise NotImplementedError
         return x_i
@@ -117,15 +116,52 @@ class GLNModel(OVAModel):
         s = torch.cat([s, torch.ones_like(s[:, :1])], dim=1)  # Add bias
 
         logits = [
-            self.forward_helper(s[i, :].unsqueeze(
-                0), y_ova[i, :], is_train=is_train)
+            self.forward_helper(
+                self.ctx, s[i, :].unsqueeze(0), y_ova[i, :], is_train=is_train
+            )
             for i in range(s.shape[0])
         ]
-
         logits = torch.stack(logits).squeeze(2).type_as(s)
         loss = self.criterion(logits, y)
         acc = self.train_accuracy(torch.argmax(logits, dim=1), y)
+
+        if is_train and self.hparams.ctx_evol_batch:
+            self.ctx_evol_batch(s, y, y_ova)
+
         return loss, acc
+
+    def ctx_evol_batch(self, s, y, y_ova):
+        lr = 0.1
+        sigma = 0.1
+        ctx_perturbed = [None] * self.hparams.num_layers_used
+        if self.ctx_evol_idx < self.hparams.evol_num_ep:
+            # Perturb and test
+            for l_idx in range(self.hparams.num_layers_used):
+                self.ctx_evol_eps[self.ctx_evol_idx][l_idx] = torch.empty_like(
+                    self.ctx[l_idx]
+                ).normal_(mean=0, std=0.25)
+                ctx_perturbed[l_idx] = (
+                    self.ctx[l_idx] + self.ctx_evol_eps[self.ctx_evol_idx][l_idx]
+                )
+            logits = [
+                self.forward_helper(
+                    ctx_perturbed, s[i, :].unsqueeze(0), y_ova[i, :], is_train=False
+                )
+                for i in range(s.shape[0])
+            ]
+            logits = torch.stack(logits).squeeze(2).type_as(s)
+            loss = self.criterion(logits, y)
+            self.ctx_evol_F[self.ctx_evol_idx] = 1 / loss
+            self.ctx_evol_idx += 1
+        else:
+            # Update
+            for l_idx in range(self.hparams.num_layers_used):
+                grad = torch.zeros_like(self.ctx[l_idx])
+                for ep in range(self.hparams.evol_num_ep):
+                    grad = grad + self.ctx_evol_F[ep] * self.ctx_evol_eps[ep][l_idx]
+                delta = (lr / (self.hparams.evol_num_ep * sigma)) * grad
+                self.ctx[l_idx] = self.ctx[l_idx] + delta
+            self.ctx_evol_idx = 0
 
     def init_params(self):
         self.ctx, self.W, self.opt, self.biases = [], [], [], []
@@ -139,16 +175,14 @@ class GLNModel(OVAModel):
             base_bias = torch.random.uniform(
                 low=logit(self.p_clip), high=logit(1 - self.p_clip)
             )
-        bmap = torch.tensor(
-            [2 ** i for i in range(self.hparams["num_subcontexts"])])
+        bmap = torch.tensor([2 ** i for i in range(self.hparams["num_subcontexts"])])
         # Params for gated layers
         for i in range(1, len(self.layer_sizes)):
             # input_dim, layer_dim = self.layer_sizes[i - 1] + 1, self.layer_sizes[i]
             input_dim, layer_dim = self.layer_sizes[i - 1], self.layer_sizes[i]
             layer_ctx = rand_hspace_gln.get_params(self.hparams, layer_dim)
             layer_W = (
-                torch.ones(num_classes, self.num_contexts,
-                           layer_dim, input_dim)
+                torch.ones(num_classes, self.num_contexts, layer_dim, input_dim)
                 / input_dim
             )
             # layer_W = torch.zeros(num_classes, self.num_contexts,
@@ -156,13 +190,17 @@ class GLNModel(OVAModel):
             layer_bias = torch.empty(1, 1).uniform_(
                 logit(self.p_clip), logit(1 - self.p_clip)
             )
-            # TODO: Currently disabled grad to train on multiple GPUs without
-            # error of autograd transferring data across devices
+
             if self.hparams["gpu"]:
                 layer_ctx = layer_ctx.cuda()
                 layer_W = layer_W.cuda()
                 layer_bias = layer_bias.cuda()
                 bmap = bmap.cuda()
+
+            # if self.hparams.ctx_evol_batch:
+            #     self.ctx_evol_F.append(torch.zeros(self.num_classes))
+            #     # self.ctx_evol_eps.append(torch.zeros_like(layer_ctx))
+
             ctx_param = torch.nn.Parameter(layer_ctx, requires_grad=False)
             W_param = torch.nn.Parameter(layer_W, requires_grad=False)
             bias_param = torch.nn.Parameter(layer_bias, requires_grad=False)
@@ -170,13 +208,32 @@ class GLNModel(OVAModel):
             self.W.append(W_param)
             self.biases.append(bias_param)
             self.bmap = bmap
+        if self.hparams.ctx_evol_batch:
+            self.ctx_evol_F = torch.zeros(self.hparams.evol_num_ep)
+            self.ctx_evol_eps = self.hparams.evol_num_ep * [
+                [None] * self.hparams.num_layers_used
+            ]
+            self.ctx_evol_idx = 0
 
     def plot(self):
         def hyperplane_fn(xy, l_idx):
-            return torch.stack([rand_hspace_gln.calc_raw(xy_i, self.ctx[l_idx]) for xy_i in xy]).squeeze(2)
-        plot_gated_model(self.X_all, self.y_all, self.forward_helper,
-                         hyperplane_fn, self.hparams.num_layers_used, self.plot_idx)
+            return torch.stack(
+                [rand_hspace_gln.calc_raw(xy_i, self.ctx[l_idx]) for xy_i in xy]
+            ).squeeze(2)
+
+        plot_gated_model(
+            self.X_all,
+            self.y_all,
+            lambda s_i: self.forward_helper(self.ctx, s_i),
+            hyperplane_fn,
+            self.hparams.num_layers_used,
+            self.plot_idx,
+        )
         self.plot_idx += 1
+
+    ###
+    # Online methods
+    ###
 
     ###
     # Pretraining methods
@@ -189,17 +246,17 @@ class GLNModel(OVAModel):
         if self.hparams["ctx_evol_pretrain"]:
             for l_idx in range(len(self.ctx)):
                 print("ctx_evol_pretrain - Layer {}".format(l_idx))
-                self.ctx[l_idx] = self.gln_evol_pretrain(self.ctx[l_idx])
+                self.ctx[l_idx] = self.gln_pretrain_evol(self.ctx[l_idx])
                 # Plot
                 if self.hparams["plot"]:
                     self.plot()
         elif self.hparams["ctx_svm_pretrain"]:
-            self.gln_svm_pretrain()
+            self.gln_pretrain_svm()
         # if self.hparams["plot"]:
         #     plot_gated_model(self.X_all, self.y_all, self.forward_helper)
         self.pretrain_complete = True
 
-    def gln_svm_pretrain(self):
+    def gln_pretrain_svm(self):
         pretrained = self.datamodule.get_pretrained(
             self.X_all,
             self.y_all_ova,
@@ -222,7 +279,7 @@ class GLNModel(OVAModel):
             else:
                 self.ctx[l_idx][:, 0, 0, :] = pretrained[:, l_idx, :]
 
-    def gln_evol_fitness(self, ctx):
+    def gln_pretrain_fitness(self, ctx):
         output_dim = ctx.shape[2]
         # c: [num_samples, num_classes, output_dim]
         c = torch.stack(
@@ -254,7 +311,7 @@ class GLNModel(OVAModel):
                         raise Exception
         return fitness  # Sum over classes to get fitness of neurons
 
-    def gln_evol_pretrain(self, ctx):
+    def gln_pretrain_evol(self, ctx):
         assert self.X_all is not None
         N = 3  # Number of iterations
         n = 5  # Number of episodes
@@ -263,12 +320,11 @@ class GLNModel(OVAModel):
         output_dim = ctx.shape[2]
         for t in range(N):
             print("ctx_evol_pretrain: Evol. iteration {}".format(t))
-            eps = torch.zeros(
-                n, *ctx.shape).type_as(ctx).normal_(mean=0, std=1)
+            eps = torch.zeros(n, *ctx.shape).type_as(ctx).normal_(mean=0, std=1)
             F = torch.zeros(n, output_dim, self.num_classes).type_as(ctx)
             for num_ep in range(n):
                 print("ctx_evol_pretrain: - Episode {}".format(num_ep))
-                F[num_ep] = self.gln_evol_fitness(ctx + sigma * eps[num_ep])
+                F[num_ep] = self.gln_pretrain_fitness(ctx + sigma * eps[num_ep])
                 # delta = torch.sum(torch.bmm(eps, F), dim=1)
             for num_ep in range(n):
                 for k in range(output_dim):
