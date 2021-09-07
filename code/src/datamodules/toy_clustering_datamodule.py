@@ -35,11 +35,12 @@ class ToyClusteringDataModule(PretrainDataModule):
         np.random.seed(42)
         centroids = np.random.rand(num_classes, dim)
         centroids[0] = np.mean(centroids[1:], axis=0)
+        # Scale and center centroids
         centroids = 20 * (centroids - np.mean(centroids, axis=0))
         data = np.zeros((num_samples, dim+1))
         added = 0
         for i, c in enumerate(centroids):
-            if i == len(centroids)-1:
+            if i == len(centroids)-1:  # If last centroid
                 num_to_add = num_samples - added
             else:
                 num_to_add = int(num_samples/num_classes)
