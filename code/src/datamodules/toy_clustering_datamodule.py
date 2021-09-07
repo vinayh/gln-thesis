@@ -18,7 +18,6 @@ class ToyClusteringDataModule(PretrainDataModule):
         num_workers: int = 0,
         pin_memory: bool = False,
         deskew: bool = False,
-        fashionmnist: bool = False,
         **kwargs
     ):
         super().__init__(data_dir=data_dir)

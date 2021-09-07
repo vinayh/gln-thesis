@@ -4,14 +4,27 @@ input_size: 2
 lin1_size: 1
 lin2_size: 1
 lin3_size: 1
+num_layers_used: 3
+
 num_classes: 3
 num_subcontexts: 4
-pred_clipping: 0.01
-weight_clipping: 5
-num_layers_used: 1
+pred_clip: 0.01
+w_clip: 5
+base_bias: false
+ctx_bias: true
+
 lr: 0.001
+dynamic_lr: false
+
+
 weight_decay: 0.0005
 gpu: false
 svm_context: false
 plot: true
-train_autograd_params: false
+# train_autograd_params: false
+ctx_evol_batch: false
+ctx_evol_pretrain: false
+ctx_evol_sample: false
+# train_evol_sample: false
+ctx_svm_pretrain: false
+ctx_svm_pretrain_force_redo: false

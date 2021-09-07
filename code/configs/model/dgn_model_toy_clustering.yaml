@@ -7,13 +7,26 @@ lin3_size: 1
 num_classes: 3
 num_branches: 5
 num_layers_used: 3
-pred_clipping: 0.01
+pred_clip: 0.01
 weight_clipping: 5
+
+
 lr: 0.01
+lr_autograd: 3e-2
+dynamic_lr: false
+
+
 weight_decay: 0.0005
+ctx_bias: false
+base_bias: false
 pretrained_ctx: false
+ctx_evol_batch: false
+ctx_evol_pretrain: false
+ctx_svm_pretrain_force_redo: false
 gpu: false
 svm_context: false
 plot: false
-train_context: true
-train_autograd_params: false
+autograd_local: true
+autograd_local_w: false
+autograd_global: false
+autograd_global_w: false

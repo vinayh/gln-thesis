@@ -2,9 +2,8 @@ _target_: src.datamodules.toy_clustering_datamodule.ToyClusteringDataModule
 
 data_dir: ${data_dir} # data_dir is specified in config.yaml
 batch_size: 10
-num_samples: 500
-train_val_test_split: [400, 50, 50]
+num_samples: 1000
+train_val_test_split: [800, 100, 100]
 num_workers: 0
 pin_memory: False
 deskew: False
-fashionmnist: False

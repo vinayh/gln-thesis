@@ -110,6 +110,19 @@
             }
         },
         {
+            "name": "Train GLN - Debug, toy",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/run.py",
+            "args": [
+                "trainer=debug_trainer",
+                "model=gln_model_toy_clustering",
+                "datamodule=toy_clustering_datamodule",
+                "logger=tensorboard",
+                "datamodule.deskew=false"
+            ]
+        },
+        {
             "name": "Train GLN - Debug, MNIST",
             "type": "python",
             "request": "launch",
@@ -199,7 +212,7 @@
                 "model.gpu=true"
             ],
             "env": {
-                "CUDA_VISIBLE_DEVICES": "4"
+                "CUDA_VISIBLE_DEVICES": "3"
             }
         },
         {
@@ -265,7 +278,7 @@
                 "model.gpu=true"
             ],
             "env": {
-                "CUDA_VISIBLE_DEVICES": "2,5,6"
+                "CUDA_VISIBLE_DEVICES": "1"
             }
         },
         {
