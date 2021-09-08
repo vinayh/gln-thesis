@@ -31,5 +31,5 @@ evol_num_ep: 10
 ctx_evol_pretrain: false
 ctx_evol_sample: false
 # train_evol_sample: false
-ctx_svm_pretrain: false
-ctx_svm_pretrain_force_redo: false
+ctx_svm_pretrain: true
+ctx_svm_pretrain_force_redo: true

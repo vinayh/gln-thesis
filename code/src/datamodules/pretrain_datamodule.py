@@ -100,6 +100,7 @@ class PretrainDataModule(LightningDataModule):
         return boundary, incorrect
 
     def get_pretrained_helper(self, X_all, y_all_ova, num_classes):
+        X_all = X_all[:, :-1]  # Remove bias term
         num_layers = 3
         pretrained = torch.zeros(num_classes, num_layers, X_all.shape[1]+1)
         for i in range(num_classes):

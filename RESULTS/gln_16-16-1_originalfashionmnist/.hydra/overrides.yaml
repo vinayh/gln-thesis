@@ -1,0 +1,8 @@
+- trainer=debug_trainer
+- model=gln_model_mnist
+- datamodule=mnist_datamodule
+- logger=csv
+- datamodule.deskew=false
+- datamodule.fashionmnist=true
+- trainer.gpus=1
+- model.gpu=true

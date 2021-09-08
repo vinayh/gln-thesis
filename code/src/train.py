@@ -71,6 +71,10 @@ def train(config: DictConfig) -> Optional[float]:
         logger=logger,
     )
 
+    # Single validation step
+    # log.info("Validating before training")
+    # trainer.validate(model)
+
     # Train the model
     log.info("Starting training!")
     trainer.fit(model=model, datamodule=datamodule)
