@@ -30,13 +30,13 @@ def train(config: DictConfig) -> Optional[float]:
 
     # Init Lightning datamodule
     log.info(f"Instantiating datamodule <{config.datamodule._target_}>")
-    datamodule: LightningDataModule = hydra.utils.instantiate(
-        config.datamodule)
+    datamodule: LightningDataModule = hydra.utils.instantiate(config.datamodule)
 
     # Init Lightning model
     log.info(f"Instantiating model <{config.model._target_}>")
     model: LightningModule = hydra.utils.instantiate(
-        config.model, datamodule=datamodule)
+        config.model, datamodule=datamodule
+    )
 
     # Init Lightning callbacks
     callbacks: List[Callback] = []
@@ -71,6 +71,10 @@ def train(config: DictConfig) -> Optional[float]:
         logger=logger,
     )
 
+    # Single validation step
+    log.info("Validating before training")
+    trainer.validate(model)
+
     # Train the model
     log.info("Starting training!")
     trainer.fit(model=model, datamodule=datamodule)
@@ -78,7 +82,8 @@ def train(config: DictConfig) -> Optional[float]:
     # Evaluate model on test set after training
     if not config.trainer.get("fast_dev_run"):
         log.info("Starting testing!")
-        trainer.test()
+        # TODO: temporarily commented out
+        # trainer.test()
 
     # Make sure everything closed properly
     log.info("Finalizing!")
@@ -92,8 +97,7 @@ def train(config: DictConfig) -> Optional[float]:
     )
 
     # Print path to best checkpoint
-    log.info(
-        f"Best checkpoint path:\n{trainer.checkpoint_callback.best_model_path}")
+    log.info(f"Best checkpoint path:\n{trainer.checkpoint_callback.best_model_path}")
 
     # Return metric score for Optuna optimization
     optimized_metric = config.get("optimized_metric")

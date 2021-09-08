@@ -12,6 +12,10 @@ import torch
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset, random_split
 from sklearn.svm import LinearSVC
+
+from sklearn.linear_model import SGDClassifier
+from sklearn.ensemble import AdaBoostClassifier
+
 from os.path import join
 
 import numpy as np
@@ -99,9 +103,9 @@ class PretrainDataModule(LightningDataModule):
         incorrect = torch.from_numpy(svm.predict(X) != y)
         return boundary, incorrect
 
-    def get_pretrained_helper(self, X_all, y_all_ova, num_classes):
+    def get_pretrained_svm_helper(self, X_all, y_all_ova, num_classes):
         num_layers = 3
-        pretrained = torch.zeros(num_classes, num_layers, X_all.shape[1]+1)
+        pretrained = torch.zeros(num_classes, num_layers, X_all.shape[1] + 1)
         for i in range(num_classes):
             print("Pretraining for class: {}".format(i))
             # Start with all samples assumed to be incorrectly classified
@@ -130,7 +134,7 @@ class PretrainDataModule(LightningDataModule):
                 )
         return pretrained
 
-    def get_pretrained(
+    def get_pretrained_svm(
         self, X_all, y_all_ova, num_classes, model_name="", force_redo=False
     ):
         filepath = join(
@@ -139,10 +143,83 @@ class PretrainDataModule(LightningDataModule):
         )
         if force_redo:
             print("Training SVM models on dataset to generate SVM-based contexts")
-            pretrained = self.get_pretrained_helper(
-                X_all, y_all_ova, num_classes)
+            pretrained = self.get_pretrained_svm_helper(X_all, y_all_ova, num_classes)
             torch.save(pretrained, filepath)
         else:
             print("Loading previously saved SVM-based contexts")
+            pretrained = torch.load(filepath)
+        return pretrained
+
+    ###
+    # AdaBoost
+    ###
+
+    def adaboost_boundary(self, X, y):
+        X, y = X.cpu().numpy(), y.cpu().numpy()
+        svm = LinearSVC(dual=False)
+        svm.fit(X, y)
+        boundary = torch.from_numpy(np.append(svm.coef_, svm.intercept_))
+        incorrect = torch.from_numpy(svm.predict(X) != y)
+        return boundary, incorrect
+
+    def pretrained_adaboost_helper_old(self, X_all, y_all_ova, num_classes):
+        num_layers = 3
+        pretrained = torch.zeros(num_classes, num_layers, X_all.shape[1] + 1)
+        for i in range(num_classes):
+            print("Pretraining for class: {}".format(i))
+            # Start with all samples assumed to be incorrectly classified
+            incorrect = torch.ones(X_all.shape[0], dtype=torch.uint8)
+            num_incorrect = torch.sum(incorrect)
+            X, y = X_all, y_all_ova[i]
+            for k in range(num_layers):
+                if num_incorrect == 0:  # If all correctly classified
+                    break
+                # Train on only previously incorrectly classified samples
+                X, y = X[incorrect, :], y[incorrect]
+                if len(torch.unique(y)) == 1:  # If all in same class
+                    print(
+                        "\tNot training layer: {} (remaining samples in same class), incorrect remaining: {}".format(
+                            k, num_incorrect
+                        )
+                    )
+                    break
+                boundary, incorrect = self.get_svm_boundary(X, y)
+                pretrained[i, k, :] = boundary
+                num_incorrect = torch.sum(incorrect)
+                print(
+                    "\tTrained layer: {}, incorrect remaining: {}".format(
+                        k, num_incorrect
+                    )
+                )
+        return pretrained
+
+    def pretrained_adaboost_helper(self, X_all, y_all_ova, num_classes):
+        num_hyperplanes = 10
+        pretrained = torch.zeros(num_classes, num_hyperplanes, X_all.shape[1])
+        X = X_all.cpu()[:, :-1]  # Remove bias element
+        y = y_all_ova.cpu()
+        for i in range(num_classes):
+            clf = AdaBoostClassifier(
+                base_estimator=SGDClassifier(loss="log"), n_estimators=num_hyperplanes
+            )
+            clf.fit(X, y[i])
+            for j in range(num_hyperplanes):
+                pretrained[i, j, :-1] = torch.tensor(clf.estimators_[j].coef_)
+                pretrained[i, j, -1] = torch.tensor(clf.estimators_[j].intercept_)
+        return pretrained
+
+    def get_pretrained_adaboost(
+        self, X_all, y_all_ova, num_classes, model_name="", force_redo=False
+    ):
+        filepath = join(
+            self.data_dir,
+            "pretrained_adaboost_{}_{}_coef.pt".format(self.dataset_name, model_name),
+        )
+        if force_redo:
+            print("Training SVM models on dataset to generate AdaBoost-based contexts")
+            pretrained = self.pretrained_adaboost_helper(X_all, y_all_ova, num_classes)
+            torch.save(pretrained, filepath)
+        else:
+            print("Loading previously saved AdaBoost-based contexts")
             pretrained = torch.load(filepath)
         return pretrained

@@ -106,12 +106,13 @@ class GLNModel(OVAModel):
         # Pretraining
         if not self.pretrain_complete:
             self.pretrain()
-        if self.hparams["plot"]:
-            self.plot()
+        # if self.hparams["plot"]:
+        #     self.plot()
 
         self.hparams.device = self.device
         x, y = batch
         y_ova = to_one_vs_all(y, self.num_classes, self.device).permute(1, 0)
+        # x = (x.max() - x) / (x.max() - x.min())
         s = x.flatten(start_dim=1)
         s = torch.cat([s, torch.ones_like(s[:, :1])], dim=1)  # Add bias
 
@@ -131,17 +132,18 @@ class GLNModel(OVAModel):
         return loss, acc
 
     def ctx_evol_batch(self, s, y, y_ova):
-        lr = 0.1
-        sigma = 0.1
+        lr = 1e-3
+        sigma = 1e-2
         ctx_perturbed = [None] * self.hparams.num_layers_used
         if self.ctx_evol_idx < self.hparams.evol_num_ep:
             # Perturb and test
             for l_idx in range(self.hparams.num_layers_used):
                 self.ctx_evol_eps[self.ctx_evol_idx][l_idx] = torch.empty_like(
                     self.ctx[l_idx]
-                ).normal_(mean=0, std=0.25)
+                ).normal_()
                 ctx_perturbed[l_idx] = (
-                    self.ctx[l_idx] + self.ctx_evol_eps[self.ctx_evol_idx][l_idx]
+                    self.ctx[l_idx]
+                    + sigma * self.ctx_evol_eps[self.ctx_evol_idx][l_idx]
                 )
             logits = [
                 self.forward_helper(
@@ -150,8 +152,11 @@ class GLNModel(OVAModel):
                 for i in range(s.shape[0])
             ]
             logits = torch.stack(logits).squeeze(2).type_as(s)
-            loss = self.criterion(logits, y)
-            self.ctx_evol_F[self.ctx_evol_idx] = 1 / loss
+            # loss = self.criterion(logits, y)
+            # self.ctx_evol_F[self.ctx_evol_idx] = 1 / loss
+            self.ctx_evol_F[self.ctx_evol_idx] = self.train_accuracy(
+                torch.argmax(logits, dim=1), y
+            )
             self.ctx_evol_idx += 1
         else:
             # Update
@@ -162,6 +167,8 @@ class GLNModel(OVAModel):
                 delta = (lr / (self.hparams.evol_num_ep * sigma)) * grad
                 self.ctx[l_idx] = self.ctx[l_idx] + delta
             self.ctx_evol_idx = 0
+            if self.hparams["plot"]:
+                self.plot()
 
     def init_params(self):
         self.ctx, self.W, self.opt, self.biases = [], [], [], []
@@ -209,6 +216,7 @@ class GLNModel(OVAModel):
             self.biases.append(bias_param)
             self.bmap = bmap
         if self.hparams.ctx_evol_batch:
+            print("Using ctx_evol_batch training")
             self.ctx_evol_F = torch.zeros(self.hparams.evol_num_ep)
             self.ctx_evol_eps = self.hparams.evol_num_ep * [
                 [None] * self.hparams.num_layers_used
@@ -244,20 +252,17 @@ class GLNModel(OVAModel):
         if self.hparams["plot"]:
             self.plot()
         if self.hparams["ctx_evol_pretrain"]:
-            for l_idx in range(len(self.ctx)):
-                print("ctx_evol_pretrain - Layer {}".format(l_idx))
-                self.ctx[l_idx] = self.gln_pretrain_evol(self.ctx[l_idx])
-                # Plot
-                if self.hparams["plot"]:
-                    self.plot()
+            self.gln_pretrain_evol()
         elif self.hparams["ctx_svm_pretrain"]:
             self.gln_pretrain_svm()
+        elif self.hparams["ctx_adaboost_pretrain"]:
+            self.gln_pretrain_adaboost()
         # if self.hparams["plot"]:
         #     plot_gated_model(self.X_all, self.y_all, self.forward_helper)
         self.pretrain_complete = True
 
     def gln_pretrain_svm(self):
-        pretrained = self.datamodule.get_pretrained(
+        pretrained = self.datamodule.get_pretrained_svm(
             self.X_all,
             self.y_all_ova,
             self.hparams.num_classes,
@@ -278,6 +283,24 @@ class GLNModel(OVAModel):
                 self.ctx[l_idx][:, 0, : self.num_classes, :] = pretrained_exp
             else:
                 self.ctx[l_idx][:, 0, 0, :] = pretrained[:, l_idx, :]
+
+    def gln_pretrain_adaboost(self):
+        pretrained = self.datamodule.get_pretrained_adaboost(
+            self.X_all,
+            self.y_all_ova,
+            self.hparams.num_classes,
+            model_name="GLN",
+            force_redo=self.hparams.ctx_adaboost_pretrain_force_redo,
+        )
+        for n in range(self.hparams.num_classes):
+            num_hyp_remain = pretrained.shape[1]
+            for l_idx in range(self.hparams["num_layers_used"]):
+                for j in range(self.ctx[l_idx].shape[2]):
+                    if num_hyp_remain >= 2:
+                        self.ctx[l_idx][n, :2, j, :] = pretrained[
+                            n, num_hyp_remain - 2 : num_hyp_remain, :,
+                        ]
+                        num_hyp_remain = num_hyp_remain - 2
 
     def gln_pretrain_fitness(self, ctx):
         output_dim = ctx.shape[2]
@@ -311,7 +334,7 @@ class GLNModel(OVAModel):
                         raise Exception
         return fitness  # Sum over classes to get fitness of neurons
 
-    def gln_pretrain_evol(self, ctx):
+    def gln_pretrain_evol_helper(self, ctx):
         assert self.X_all is not None
         N = 3  # Number of iterations
         n = 5  # Number of episodes
@@ -337,3 +360,12 @@ class GLNModel(OVAModel):
                         )
         # TODO: Check and fix above, try implementing evol method in batch
         return ctx
+
+    def gln_pretrain_evol(self):
+        for l_idx in range(len(self.ctx)):
+            print("ctx_evol_pretrain - Layer {}".format(l_idx))
+            self.ctx[l_idx] = self.gln_pretrain_evol(self.ctx[l_idx])
+            # Plot
+            if self.hparams["plot"]:
+                self.plot()
+

@@ -109,15 +109,15 @@ def gated_layer(params, hparams, h_in, s, targets, l_idx, t, is_train):
         w_delta = torch.bmm(c.permute(2, 1, 0), w_grad.permute(1, 0, 2))
         if hparams.autograd_local_w and not hparams.autograd_local:
             raise Exception
-        if not hparams.autograd_local_w:
+        if not hparams.autograd_local:
             with torch.no_grad():
                 params["W"][l_idx] = params["W"][l_idx] - lr(hparams, t) * w_delta
         if hparams.autograd_local:
             loss = L1_LOSS_FN(torch.sigmoid(h_out), targets)
             params["opt_l"][l_idx].zero_grad()
             loss.backward()
-            if hparams.autograd_local_w:
-                params["W"][l_idx].grad = w_delta
+            # if hparams.autograd_local_w:
+            params["W"][l_idx].grad = w_delta
             params["opt_l"][l_idx].step()
         else:
             with torch.no_grad():
@@ -159,15 +159,19 @@ def init_params(layer_sizes, hparams, binary_class=0):
         )
         W_param = torch.nn.Parameter(
             layer_W,
-            requires_grad=(hparams.autograd_local_w or hparams.autograd_global_w),
+            requires_grad=(
+                hparams.autograd_local
+                or hparams.autograd_local_w
+                or hparams.autograd_global_w
+            ),
         )
 
-        if hparams.autograd_local and hparams.autograd_local_w:
+        if hparams.autograd_local or hparams.autograd_local_w:
             layer_opt = torch.optim.Adam(
                 params=[W_param, ctx_param], lr=hparams.lr_autograd
             )
-        elif hparams.autograd_local:
-            layer_opt = torch.optim.Adam(params=[ctx_param], lr=hparams.lr_autograd)
+        # elif hparams.autograd_local:
+        #     layer_opt = torch.optim.Adam(params=[ctx_param], lr=hparams.lr_autograd)
         else:
             layer_opt = None
 

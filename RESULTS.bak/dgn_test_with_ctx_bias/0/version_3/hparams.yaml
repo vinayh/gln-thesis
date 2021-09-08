@@ -1,0 +1,89 @@
+trainer:
+  _target_: pytorch_lightning.Trainer
+  gpus: 1
+  min_epochs: 1
+  max_epochs: 3
+  progress_bar_refresh_rate: null
+  weights_summary: null
+  profiler: null
+  gradient_clip_val: 0
+  accumulate_grad_batches: 1
+  val_check_interval: 0.2
+  check_val_every_n_epoch: 1
+  stochastic_weight_avg: false
+  num_sanity_val_steps: 2
+  fast_dev_run: false
+  overfit_batches: 0
+  limit_train_batches: 1.0
+  limit_val_batches: 1.0
+  limit_test_batches: 1.0
+  track_grad_norm: -1
+  terminate_on_nan: false
+  amp_backend: native
+  amp_level: '02'
+  precision: 32
+  accelerator: null
+  num_nodes: 1
+  tpu_cores: null
+  deterministic: false
+  resume_from_checkpoint: null
+model:
+  _target_: src.models.dgn_model.DGNModel
+  input_size: 784
+  lin1_size: 16
+  lin2_size: 16
+  lin3_size: 1
+  lin4_size: 1
+  num_layers_used: 3
+  num_classes: 10
+  num_branches: 16
+  pred_clip: 1.0e-05
+  weight_clipping: 5
+  lr: 0.005
+  lr_autograd: 0.01
+  dynamic_lr: false
+  weight_decay: 0.0005
+  ctx_bias: true
+  base_bias: false
+  pretrained_ctx: false
+  ctx_evol_batch: false
+  ctx_evol_pretrain: false
+  ctx_svm_pretrain_force_redo: false
+  gpu: true
+  svm_context: false
+  plot: false
+  autograd_local: true
+  autograd_local_w: false
+  autograd_global: false
+  autograd_global_w: false
+datamodule:
+  _target_: src.datamodules.mnist_datamodule.MNISTDataModule
+  data_dir: /home/vinay/gln-thesis/data/
+  batch_size: 64
+  train_val_test_split:
+  - 60000
+  - 10000
+  - 0
+  num_workers: 0
+  pin_memory: false
+  deskew: false
+  fashionmnist: false
+callbacks:
+  model_checkpoint:
+    _target_: pytorch_lightning.callbacks.ModelCheckpoint
+    monitor: val/acc
+    save_top_k: 1
+    save_last: true
+    mode: max
+    verbose: false
+    dirpath: checkpoints/
+    filename: '{epoch:02d}'
+  early_stopping:
+    _target_: pytorch_lightning.callbacks.EarlyStopping
+    monitor: val/acc
+    patience: 100
+    mode: max
+    min_delta: 0
+model/params_total: 0
+model/params_trainable: 0
+model/params_not_trainable: 0

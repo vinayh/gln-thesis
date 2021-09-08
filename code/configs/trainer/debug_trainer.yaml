@@ -17,7 +17,7 @@ profiler: null
 # tricks
 gradient_clip_val: 0
 accumulate_grad_batches: 1
-val_check_interval: 0.20
+val_check_interval: 0.05
 check_val_every_n_epoch: 1
 stochastic_weight_avg: False
 

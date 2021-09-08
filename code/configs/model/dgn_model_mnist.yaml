@@ -14,12 +14,12 @@ pred_clip: 1e-5
 weight_clipping: 5
 
 # lr: 0.20
-lr: 5e-3
-lr_autograd: 3e-2
+lr: 1e-2
+lr_autograd: 1e-2
 dynamic_lr: false
 
 weight_decay: 0.0005
-ctx_bias: false
+ctx_bias: true
 base_bias: false
 pretrained_ctx: false
 ctx_evol_batch: false

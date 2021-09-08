@@ -1,8 +1,8 @@
 _target_: src.models.gln_model.GLNModel
 
 input_size: 3072
-lin1_size: 16
-lin2_size: 16
+lin1_size: 64
+lin2_size: 64
 lin3_size: 1
 lin4_size: 1
 num_layers_used: 3
@@ -23,4 +23,12 @@ weight_decay: 0.0005
 gpu: false
 svm_context: false
 plot: false
-train_autograd_params: false
+
+ctx_evol_batch: true
+evol_num_ep: 10
+
+ctx_evol_pretrain: false
+ctx_evol_sample: false
+# train_evol_sample: false
+ctx_svm_pretrain: false
+ctx_svm_pretrain_force_redo: false

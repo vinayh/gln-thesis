@@ -59,7 +59,10 @@ class MNISTDataModule(PretrainDataModule):
             print("MNIST DataModule: deskewing enabled")
             self.transforms = transforms_deskew
         else:
-            self.transforms = transforms_normalize
+            if fashionmnist:
+                self.transforms = transforms.ToTensor()
+            else:
+                self.transforms = transforms_normalize
             # self.transforms = transforms.Compose([transforms.ToTensor()])
 
         # self.dims is returned when you call datamodule.size()
