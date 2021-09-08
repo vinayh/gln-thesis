@@ -73,7 +73,7 @@ def plot_gated_model(x, y, forward_fn, hyperplane_fn, num_layers, plot_idx=0):
         vmax=z_i.max(),
         cmap="Greens",
         extent=[*ax.get_xlim(), *ax.get_ylim()],
-        interpolation="none",
+        interpolation="bilinear",
     )
     # plt.show()
     plt.savefig("/home/vinay/gln_plot_frame_{}.png".format(plot_idx))
