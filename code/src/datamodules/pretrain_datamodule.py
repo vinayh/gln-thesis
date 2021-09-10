@@ -219,9 +219,14 @@ class PretrainDataModule(LightningDataModule):
                 self.dataset_name, model_name),
         )
         if force_redo:
+<<<<<<< HEAD
             print("Training SVM models on dataset to generate AdaBoost-based contexts")
             pretrained = self.pretrained_adaboost_helper(
                 X_all, y_all_ova, num_classes)
+=======
+            print("Training AdaBoost models on dataset to generate contexts")
+            pretrained = self.pretrained_adaboost_helper(X_all, y_all_ova, num_classes)
+>>>>>>> ef6b76acba5a30229f4512dfc38404ac01d38f1d
             torch.save(pretrained, filepath)
         else:
             print("Loading previously saved AdaBoost-based contexts")

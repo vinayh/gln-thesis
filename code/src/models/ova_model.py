@@ -39,6 +39,7 @@ class OVAModel(LightningModule):
             or self.hparams["ctx_evol_batch"]
             or self.hparams["ctx_evol_pretrain"]
             or self.hparams["ctx_svm_pretrain_force_redo"]
+            or self.hparams["ctx_adaboost_pretrain_force_redo"]
         ):
             self.X_all, self.y_all, self.y_all_ova = self.get_full_dataset()
         self.init_params()
@@ -100,6 +101,7 @@ class OVAModel(LightningModule):
         # Log
         self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
         self.log("train/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/acc_best", max(self.metric_hist["val/acc"]), prog_bar=True)
         self.log(
             "lr",
             self.lr(self.hparams, self.t),

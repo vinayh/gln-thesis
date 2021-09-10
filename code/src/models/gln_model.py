@@ -364,8 +364,7 @@ class GLNModel(OVAModel):
     def gln_pretrain_evol(self):
         for l_idx in range(len(self.ctx)):
             print("ctx_evol_pretrain - Layer {}".format(l_idx))
-            self.ctx[l_idx] = self.gln_pretrain_evol(self.ctx[l_idx])
+            self.ctx[l_idx] = self.gln_pretrain_evol_helper(self.ctx[l_idx])
             # Plot
             if self.hparams["plot"]:
                 self.plot()
-

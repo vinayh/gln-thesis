@@ -37,7 +37,7 @@ hydra:
     # output paths for hydra logs
     run:
         # dir: logs/runs/${now:%Y-%m-%d}/${now:%H-%M-%S}
-        dir: RESULTS/2_gln_16-16-1_deskewedfashionmnist
+        dir: RESULTS/mlp-256-256-256-1_originalfashionmnist
     sweep:
         dir: logs/multiruns/${now:%Y-%m-%d_%H-%M-%S}
         subdir: ${hydra.job.num}
