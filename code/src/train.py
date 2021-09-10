@@ -72,13 +72,8 @@ def train(config: DictConfig) -> Optional[float]:
     )
 
     # Single validation step
-<<<<<<< HEAD
     log.info("Validating before training")
     trainer.validate(model)
-=======
-    # log.info("Validating before training")
-    # trainer.validate(model)
->>>>>>> 7a045b9898fa2041dc0b1d377f5dbb0e1d249eca
 
     # Train the model
     log.info("Starting training!")
