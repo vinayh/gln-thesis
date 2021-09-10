@@ -143,7 +143,8 @@ class PretrainDataModule(LightningDataModule):
         )
         if force_redo:
             print("Training SVM models on dataset to generate SVM-based contexts")
-            pretrained = self.get_pretrained_svm_helper(X_all, y_all_ova, num_classes)
+            pretrained = self.get_pretrained_svm_helper(
+                X_all, y_all_ova, num_classes)
             torch.save(pretrained, filepath)
         else:
             print("Loading previously saved SVM-based contexts")
@@ -205,7 +206,8 @@ class PretrainDataModule(LightningDataModule):
             clf.fit(X, y[i])
             for j in range(num_hyperplanes):
                 pretrained[i, j, :-1] = torch.tensor(clf.estimators_[j].coef_)
-                pretrained[i, j, -1] = torch.tensor(clf.estimators_[j].intercept_)
+                pretrained[i, j, -
+                           1] = torch.tensor(clf.estimators_[j].intercept_)
         return pretrained
 
     def get_pretrained_adaboost(
@@ -213,11 +215,13 @@ class PretrainDataModule(LightningDataModule):
     ):
         filepath = join(
             self.data_dir,
-            "pretrained_adaboost_{}_{}_coef.pt".format(self.dataset_name, model_name),
+            "pretrained_adaboost_{}_{}_coef.pt".format(
+                self.dataset_name, model_name),
         )
         if force_redo:
             print("Training SVM models on dataset to generate AdaBoost-based contexts")
-            pretrained = self.pretrained_adaboost_helper(X_all, y_all_ova, num_classes)
+            pretrained = self.pretrained_adaboost_helper(
+                X_all, y_all_ova, num_classes)
             torch.save(pretrained, filepath)
         else:
             print("Loading previously saved AdaBoost-based contexts")
